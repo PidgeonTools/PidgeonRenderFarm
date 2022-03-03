@@ -5,9 +5,9 @@ global m
 m = mega.login()
 m = mega.login("", "")
 
-mBlend = m.find('Scene.Blend')
-print(mBlend)
+m_blend = m.find('Scene.Blend')
+print(m_blend)
 try:
-    m.download(mBlend)
+    m.download(m_blend)
 except PermissionError:
     print("fail")

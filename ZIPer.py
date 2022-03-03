@@ -6,21 +6,21 @@ from zipfile import ZipFile
 import shutil
 
 
-def wait(cName, con0, con1, con2):
-    global exportName
+def wait(c_name, con0, con1, con2):
+    global export_name
     digits_str = str(con1)
     digits = len(digits_str)
 
     if digits == 1:
-        exportName = "frame_" + "000" + digits_str + ".png"
+        export_name = "frame_" + "000" + digits_str + ".png"
     elif digits == 2:
-        exportName = "frame_" + "00" + digits_str + ".png"
+        export_name = "frame_" + "00" + digits_str + ".png"
     elif digits == 3:
-        exportName = "frame_" + "0" + digits_str + ".png"
+        export_name = "frame_" + "0" + digits_str + ".png"
     elif digits == 4:
-        exportName = "frame_" + digits_str + ".png"
+        export_name = "frame_" + digits_str + ".png"
 
-    print(exportName)
+    print(export_name)
 
     print("Rendering")
 
@@ -49,7 +49,7 @@ def wait(cName, con0, con1, con2):
     m = mega.login("", "")
 
     while isdir:
-        if os.path.isfile(exportName):
+        if os.path.isfile(export_name):
             #zip = ZipFile(cName + ".zip", 'w')
 
             # for render in os.scandir("C:/frames"):
@@ -57,14 +57,14 @@ def wait(cName, con0, con1, con2):
 
             # zip.close()
 
-            mZIP = m.find(cName + ".zip", exclude_deleted=True)
-            if not mZIP == None:
-                m.delete(mZIP[0])
+            m_zip = m.find(c_name + ".zip", exclude_deleted=True)
+            if not m_zip == None:
+                m.delete(m_zip[0])
 
             shutil.make_archive(
-                cName, 'zip', os.path.dirname(__file__) + '/frames')
+                c_name, 'zip', os.path.dirname(__file__) + '/frames')
 
-            m.upload(cName + ".zip")
+            m.upload(c_name + ".zip")
             os.chdir(os.path.dirname(__file__))
             #os.chdir(os.path.dirname(__file__) + "/job")
             shutil.rmtree(os.path.dirname(__file__) + '/frames')

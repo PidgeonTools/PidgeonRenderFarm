@@ -6,8 +6,8 @@ import time
 from zipfile import ZipFile
 
 
-def client(firstBoot):
-    if firstBoot == "Yes":
+def client(first_boot):
+    if first_boot == "Yes":
         subprocess.call([sys.executable, "-m", "ensurepip", "--user"])
         subprocess.call([sys.executable, "-m", "pip",
                          "install", "--upgrade", "pip"])
@@ -19,10 +19,10 @@ def client(firstBoot):
     #m = mega.login()
     m = mega.login("", "")
 
-    global cName
-    cName = 'a'
-    infoFile = cName + '.txt'
-    print(infoFile)
+    global c_name
+    c_name = 'a'
+    info_file = c_name + '.txt'
+    print(info_file)
 
     global content
 
@@ -32,7 +32,7 @@ def client(firstBoot):
     os.mkdir("job")
 
     while True:
-        info = m.find(infoFile, exclude_deleted=True)
+        info = m.find(info_file, exclude_deleted=True)
         print(info)
         if info != None:
             m.download(info, os.path.dirname(__file__) + "/job")
@@ -41,31 +41,31 @@ def client(firstBoot):
 
             os.chdir(os.path.dirname(__file__) + "/job")
 
-            with open(infoFile, "r") as f:
+            with open(info_file, "r") as f:
                 con = f.read()
 
             content = con.split("|")
             print(content)
 
-            mBlend = m.find(content[2], exclude_deleted=True)
-            print(mBlend)
+            m_blend = m.find(content[2], exclude_deleted=True)
+            print(m_blend)
 
-            if mBlend != None:
-                m.download(mBlend, os.path.dirname(__file__) + "/job")
+            if m_blend != None:
+                m.download(m_blend, os.path.dirname(__file__) + "/job")
 
                 print("Deleting info file")
                 m.delete(info[0])
 
                 blend = content[2]
-                blendPath = os.path.abspath(blend)
+                blend_path = os.path.abspath(blend)
 
                 ziper = os.path.join(os.path.abspath(
                     os.path.dirname(__file__)), "ZIPer.py")
                 with open("run.bat", "w+") as f:
                     f.write(
-                        f'start "" "C:/Program Files (x86)/Steam/steamapps/common/Blender/blender.exe" -b "{blendPath}" -o "{os.path.dirname(__file__) + "/frames/frame_####"}" -s {content[0]} -e {content[1]} -a\n')
+                        f'start "" "C:/Program Files (x86)/Steam/steamapps/common/Blender/blender.exe" -b "{blend_path}" -o "{os.path.dirname(__file__) + "/frames/frame_####"}" -s {content[0]} -e {content[1]} -a\n')
                     f.write(
-                        f'"{sys.executable}" "{ziper}" {cName} {content[0]} {content[1]} "{content[2]}"')
+                        f'"{sys.executable}" "{ziper}" {c_name} {content[0]} {content[1]} "{content[2]}"')
 
                 os.system("run.bat")
                 break

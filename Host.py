@@ -8,8 +8,8 @@ import sys
 from requests.models import ContentDecodingError
 
 
-def host(firstBoot):
-    if firstBoot == "Yes":
+def host(first_boot):
+    if first_boot == "Yes":
         subprocess.call([sys.executable, "-m", "ensurepip", "--user"])
         subprocess.call([sys.executable, "-m", "pip",
                          "install", "--upgrade", "pip"])
@@ -17,7 +17,7 @@ def host(firstBoot):
         subprocess.call([sys.executable, "-m", "pip",
                          "install", "ffmpeg-python"])
 
-        firstBoot = "No"
+        first_boot = "No"
 
     from mega import Mega
     import ffmpeg
@@ -30,15 +30,15 @@ def host(firstBoot):
     global clients
     clients = ["a|2.1", "b|2.5"]
 
-    global clientZIP
-    clientZIP = []
+    global client_zip
+    client_zip = []
 
     for c in clients:
         list = c.split("|")
-        clientZIP.append(list[0] + ".zip")
+        client_zip.append(list[0] + ".zip")
 
-    global startEnd
-    startEnd = []
+    global start_end
+    start_end = []
 
     global project
     project = False
@@ -46,11 +46,11 @@ def host(firstBoot):
     global copy
     copy = None
 
-    global projectSettings
-    projectSettings = ["zip", "mp4", "fps",
-                       "rate control", "value", "upscale", "res"]
+    global project_settings
+    project_settings = ["zip", "mp4", "fps",
+                        "rate control", "value", "upscale", "res"]
 
-    def getFrames(blend):
+    def get_frames(blend):
         import struct
 
         blendfile = open(path, "rb")
@@ -112,36 +112,38 @@ cs - specify clients")
         elif command == "n" or command == "new":
             path = input("File: ")
 
-            fName = os.path.basename(path)
-            print(fName)
+            f_name = os.path.basename(path)
+            print(f_name)
 
             size = os.path.getsize(path)
-            usedTotal = m.get_storage_space()
-            maxSize = int(usedTotal["total"] - usedTotal["used"])
+            used_total = m.get_storage_space()
+            max_size = int(used_total["total"] - used_total["used"])
 
-            print(maxSize)
+            print(max_size)
 
-            if size < maxSize:
+            if size < max_size:
                 print("Enough free space")
 
-                while projectSettings[0] != "y" or projectSettings[0] != "n":
-                    projectSettings[0] = input("Extract Frames? y/n: ").lower()
+                while project_settings[0] != "y" or project_settings[0] != "n":
+                    project_settings[0] = input(
+                        "Extract Frames? y/n: ").lower()
 
-                if projectSettings[0] == "y" or projectSettings[0] == "n":
-                    while projectSettings[1] != "y" or projectSettings[1] != "n":
-                        projectSettings[1] = input(
+                if project_settings[0] == "y" or project_settings[0] == "n":
+                    while project_settings[1] != "y" or project_settings[1] != "n":
+                        project_settings[1] = input(
                             "Generate MP4? y/n: ").lower()
 
-                if projectSettings[1] == "y" or projectSettings[1] == "n":
-                    while not projectSettings[2].isdigit():
-                        projectSettings[2] = input("Video FPS? Whole Number: ")
+                if project_settings[1] == "y" or project_settings[1] == "n":
+                    while not project_settings[2].isdigit():
+                        project_settings[2] = input(
+                            "Video FPS? Whole Number: ")
 
-                    while projectSettings[3] != "crf" or projectSettings[2] != "cbr":
-                        projectSettings[3] = input(
+                    while project_settings[3] != "crf" or project_settings[2] != "cbr":
+                        project_settings[3] = input(
                             "Rate Control Type? cbr/crf: ").lower()
 
-                    while not projectSettings[4].isdigit():
-                        projectSettings[4] = input("Bitrate? kbps: ")
+                    while not project_settings[4].isdigit():
+                        project_settings[4] = input("Bitrate? kbps: ")
 
                 times = []
                 for c in clients:
@@ -149,19 +151,19 @@ cs - specify clients")
                     times.append(float(list[1]))
 
                 print("Calculating Time")
-                global totalTime
-                totalTime = 0
+                global total_time
+                total_time = 0
                 for t in times:
-                    totalTime = totalTime + t
-                print(totalTime)
+                    total_time = total_time + t
+                print(total_time)
 
                 print("Calculating Frames")
-                startEnd = getFrames(path)
-                print(startEnd)
-                start = startEnd[0]
-                end = startEnd[1]
-                totalAmount = end - (start - 1)
-                currentFrame = start
+                start_end = get_frames(path)
+                print(start_end)
+                start = start_end[0]
+                end = start_end[1]
+                total_amount = end - (start - 1)
+                current_frame = start
 
                 print("Generating Ranges")
                 for c in clients:
@@ -169,25 +171,25 @@ cs - specify clients")
                     name = list[0]
                     time = float(list[1])
 
-                    percent = time / totalTime
+                    percent = time / total_time
                     print(percent)
                     rev_percent = 1.0 - percent
                     print(rev_percent)
-                    cAmount = int(round(totalAmount * rev_percent))
-                    print(name + str(cAmount))
+                    c_amount = int(round(total_amount * rev_percent))
+                    print(name + str(c_amount))
 
                     filename = name + ".txt"
                     with open(filename, "w+") as f:
                         f.write(
-                            f"{currentFrame}|{currentFrame + (cAmount - 1)}|{fName}")
+                            f"{current_frame}|{current_frame + (c_amount - 1)}|{f_name}")
                         f.close
 
                     m.upload(filename)
 
-                    currentFrame = currentFrame + cAmount
+                    current_frame = current_frame + c_amount
 
                 print("Copying")
-                copy = shutil.copy2(path, fName)  # "FarmMe.blend")
+                copy = shutil.copy2(path, f_name)  # "FarmMe.blend")
 
                 print("Uploading")
                 m.upload(copy)
@@ -207,8 +209,8 @@ cs - specify clients")
             with open(path, "r") as f:
                 clients = f.read
 
-    global allFiles
-    allFiles = False
+    global all_files
+    all_files = False
 
     '''os.chdir(os.path.dirname(__file__))
     if os.path.isdir("output"):
@@ -220,19 +222,19 @@ cs - specify clients")
     os.mkdir("frames")'''
     os.chdir(os.path.dirname(__file__) + '/output')
 
-    global cZIPe
-    cZIPe = clientZIP
+    global c_zip_e
+    c_zip_e = client_zip
 
-    for cZIP in cZIPe:
-        zip = m.find(cZIP, exclude_deleted=True)
+    for c_zip in c_zip_e:
+        zip = m.find(c_zip, exclude_deleted=True)
         print(zip)
         if zip != None:
             m.delete(zip[0])
 
-    while project and not allFiles:
+    while project and not all_files:
         print("checking")
-        for cZIP in cZIPe:
-            zip = m.find(cZIP, exclude_deleted=True)
+        for c_zip in c_zip_e:
+            zip = m.find(c_zip, exclude_deleted=True)
             print(zip)
             if zip != None:
                 m.download(zip, os.path.dirname(__file__) + "/output")
@@ -241,27 +243,27 @@ cs - specify clients")
                 # print(link)
                 # m.delete_url(link)
 
-                cZIPe.remove(cZIP)
+                c_zip_e.remove(c_zip)
 
-                if all([os.path.isfile(f) for f in clientZIP]):
+                if all([os.path.isfile(f) for f in client_zip]):
                     print("All there")
-                    allFiles = True
+                    all_files = True
                     break
 
         waiter.sleep(10)
 
-    while project and allFiles:
-        if projectSettings[0] == "y":
+    while project and all_files:
+        if project_settings[0] == "y":
             os.chdir(os.path.dirname(__file__) + "/output")
-            for cZIP in clientZIP:
-                with ZipFile(os.path.dirname(__file__) + "/output/" + cZIP, "r") as fZIP:
+            for c_zip in client_zip:
+                with ZipFile(os.path.dirname(__file__) + "/output/" + c_zip, "r") as fZIP:
                     print("extracting")
                     fZIP.extractall(os.path.dirname(
                         __file__) + "/output/" + "/frames")
 
-            if projectSettings[1] == "y":
-                SYSpath = 'C:/Program Files/ffmpeg/bin'
-                os.environ['PATH'] += ';' + SYSpath
+            if project_settings[1] == "y":
+                sys_path = 'C:/Program Files/ffmpeg/bin'
+                os.environ['PATH'] += ';' + sys_path
 
                 os.chdir(os.path.dirname(__file__) + "/output")
                 if os.path.isfile("render.mp4"):
@@ -270,17 +272,17 @@ cs - specify clients")
                 loc = os.path.join(os.path.dirname(
                     __file__) + "/output" + "/frames" + "/frame_%04d.png")
                 stream = ffmpeg.input(loc, framerate=int(
-                    projectSettings[2]), start_number=startEnd[0])
-                if projectSettings[3] == "crf":
+                    project_settings[2]), start_number=start_end[0])
+                if project_settings[3] == "crf":
                     stream = ffmpeg.output(
-                        stream, "render.mp4", crf=int(projectSettings[4]))
-                elif projectSettings[3] == "cbr":
+                        stream, "render.mp4", crf=int(project_settings[4]))
+                elif project_settings[3] == "cbr":
                     stream = ffmpeg.output(
-                        stream, "render.mp4", video_bitrate=int(projectSettings[4]))
+                        stream, "render.mp4", video_bitrate=int(project_settings[4]))
                 ffmpeg.run(stream)
 
-        pF = m.find(copy)
-        m.delete(pF[0])
+        p_f = m.find(copy)
+        m.delete(p_f[0])
 
         host("No")
 
