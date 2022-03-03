@@ -1,31 +1,38 @@
-from doctest import master
-import re
-import shutil
+#import shutil
 import subprocess
 import sys
 import os
-import time
-from tracemalloc import start
-from zipfile import ZipFile
+#import time
+#from zipfile import ZipFile
 import socket
 from PIL import Image
 import ftplib
 import urllib.request
 #import ffmpeg
 
+#---Master related---#
 master_ip = socket.gethostbyname(socket.gethostname())
-ftp_url = ""
-ftp_port = 1337
-ftp_user = ""
-ftp_password = ""
+settings_file = f"master_{master_ip}_settings.txt"
 
-working_path = ""
+indicator = False
+ftp_url = None  # 0
+ftp_port = None  # 1
+ftp_dir = None  # 2
+ftp_user = None  # 3
+ftp_password = None  # 4
+
+ftp_stuff = []  # None, None, None, None, None, None]
+delete_after_done = False
+master_port = None
+working_dir = None
+script_dir = os.path.dirname(os.path.abspath(__file__))
+print(script_dir)
 
 #global active_project
 #active_project = False
 
 #---Project related---#
-path = None
+path = None  # = "C:/Users/alexj/Desktop/Red Render Farm/v2/Scene.blend"
 blend_name = None
 
 project_settings = ["zip", "mp4", "fps",
@@ -41,6 +48,68 @@ frames_received = []
 print("good")
 
 
+def save_settings():
+    f = open(settings_file, "w+")
+    content = "127.0.0.1" + "\n"  # 0
+    content += "1337" + "\n"  # 1
+    content += "." + "\n"  # 2
+    content += "0" + "\n"  # 3
+    content += "user" + "\n"  # 4
+    content += "password" + "\n"  # 5
+    content += "0" + "\n"  # 6
+    content += "9090" + "\n"  # 7
+    content += "." + "\n"  # 8
+    f.write(content)
+    f.close()
+
+    load_settings(True)
+
+
+def load_settings(again: bool):
+    try:
+        f = open(settings_file, "r")
+        content = [line[:-1] for line in f]
+
+        content_inted = content
+        content_inted[1] = int(content[1])
+        content_inted[3] = bool(int(content[3]))
+        content_inted[6] = bool(int(content[6]))
+        content_inted[7] = int(content[7])
+
+        print(content_inted)
+        f.close()
+
+        global ftp_stuff
+        ftp_stuff.append(content_inted[0])
+        ftp_stuff.append(content_inted[1])
+        if content_inted[2] == ".":
+            ftp_stuff.append("")
+        else:
+            ftp_stuff.append(content_inted[2])
+        ftp_stuff.append(content_inted[3])
+        ftp_stuff.append(content_inted[4])
+        ftp_stuff.append(content_inted[5])
+
+        global delete_after_done
+        delete_after_done = content_inted[6]
+        global master_port
+        master_port = content_inted[7]
+        global working_dir
+        if content_inted[8] == ".":
+            working_dir = script_dir
+        else:
+            working_dir = content_inted[8]
+
+        global indicator
+        indicator = True
+    except:
+        if again:
+            sys.exit("settings file still broken")
+        else:
+            print("Settings file broken")
+            save_settings()
+
+
 def master(first_boot):
     if first_boot == "Yes":
         subprocess.call([sys.executable, "-m", "ensurepip", "--user"])
@@ -49,13 +118,16 @@ def master(first_boot):
         subprocess.call([sys.executable, "-m", "pip",
                          "install", "ffmpeg-python"])
 
+    if not indicator:
+        load_settings(False)
+
     jobs_on_the_go = True
 
     while True:
         command = input("Command (h for help): ").lower()
 
         if command == "h" or command == "help":
-            print(f"n - New Project \na - manage account \ncs - specify clients")
+            print(f"n - New Project \nl - Open old Project")
 
         elif command == "n" or command == "new":
             global path
@@ -69,22 +141,6 @@ def master(first_boot):
             blend_name = os.path.split(path)[1]
 
             global project_settings
-            '''while project_settings[0] != "y" or project_settings[0] != "n":
-                    project_settings[0] = input("Extract Frames? y/n: ").lower()
-
-            if project_settings[0] == "y" or project_settings[0] == "n":'''
-            '''while project_settings[1] != "y" or project_settings[1] != "n":
-                project_settings[1] = input("Generate MP4? y/n: ").lower()
-
-            if project_settings[1] == "y" or project_settings[1] == "n":
-                while not project_settings[2].isdigit():
-                    project_settings[2] = input("Video FPS? Whole Number: ")
-
-                while project_settings[3] != "crf" or project_settings[2] != "cbr":
-                    project_settings[3] = input("Rate Control Type? cbr/crf: ").lower()
-
-                while not project_settings[4].isdigit():
-                    project_settings[4] = input("Value?: ")'''
 
             print("Calculating Frames...")
             global start_end_frame
@@ -124,6 +180,9 @@ def master(first_boot):
             #global active_project
             #active_project = True
 
+        elif command == "l" or command == "load":
+            return
+
 
 def reset():
     global active_project
@@ -157,7 +216,7 @@ def reset():
     master("No")
 
 
-def NewProject():
+def new_project():
     return
 
 
@@ -207,10 +266,10 @@ def job():
 
                 # download from ftp
                 urllib.request.urlretrieve(
-                    f'ftp://{ftp_user}:{ftp_password}@{ftp_url}:{ftp_port}/{split[2]}', working_path + split[2])
+                    f'ftp://{ftp_user}:{ftp_password}@{ftp_url}:{ftp_port}/{split[2]}', working_dir + split[2])
 
                 print("verifying...")
-                im = Image.open(working_path + split[2])
+                im = Image.open(working_dir + split[2])
                 try:
                     im.verify()
                     frames_received.append(int(split[1]))
@@ -315,9 +374,10 @@ def get_frames(path):
 
 
 if __name__ == "__main__":
-    print(sys.argv)
+    # print(sys.argv)
     try:
         arg = sys.argv[1]
         master(arg)
     except:
         master("No")
+        # load_settings(False)

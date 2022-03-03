@@ -8,22 +8,78 @@ from zipfile import ZipFile
 import socket
 import ftplib
 import urllib.request
+import re
+
+#---Client related---#
+client_ip = socket.gethostbyname(socket.gethostname())
+settings_file = f"client_{client_ip}_settings.txt"
+
+indicator = False
+master_ip = None
+master_port = None
+blender_path = None
+working_dir = None
+script_dir = os.path.dirname(os.path.abspath(__file__))
+print(script_dir)
 
 connected = False
-client_ip = socket.gethostbyname(socket.gethostname())
-master_ip = ""
-
-ftp_url = ""
-ftp_port = 1337
-ftp_user = ""
-ftp_password = ""
-
-blender_path = "D:/Program Files (x86)/Steam/steamapps/common/Blender/blender.exe"
-working_path = ""
 
 
-def load_settings():
-    return
+def save_settings():
+    f = open(settings_file, "w+")
+    content = "127.0.0.1" + "\n"  # 0
+    content += "1337" + "\n"  # 1
+    # 2
+    content += "D:/Program Files (x86)/Steam/steamapps/common/Blender/blender.exe" + "\n"
+    content += "." + "\n"  # 3
+    content += "0" + "\n"  # 4
+    # (OPENCL; CUDA; HIP; OPTIX)                                         #5
+    content += "CUDA" + "\n"
+    content += "0" + "\n"  # 6
+    content += "y" + "\n"  # 7
+    content += "y" + "\n"  # 8
+    content += "0" + "\n"  # 9
+    content += "0" + "\n"  # 10
+    f.write(content)
+    f.close()
+
+    load_settings(True)
+
+
+def load_settings(again: bool):
+    try:
+        f = open(settings_file, "r")
+        content = [line[:-1] for line in f]
+
+        content_inted = content
+        content_inted[1] = int(content[1])
+        content_inted[3] = bool(int(content[3]))
+        content_inted[6] = bool(int(content[6]))
+        content_inted[7] = int(content[7])
+
+        print(content_inted)
+        f.close()
+
+        global master_ip
+        master_ip = content_inted[0]
+        global master_port
+        master_port = content_inted[1]
+        global blender_path
+        blender_path = content_inted[2]
+        global working_dir
+        if content_inted[3] == ".":
+            working_dir = script_dir
+        else:
+            working_dir = content_inted[3]
+
+        global indicator
+        indicator = True
+    except:
+        if again:
+            sys.exit("settings file still broken")
+        else:
+            print("Settings file broken")
+            save_settings()
 
 
 def client(first_boot):
@@ -72,7 +128,7 @@ def client(first_boot):
                         f"Job-Request! {master_ip}; Project: {split[1]}; Frame: {split[2]}")
 
                     urllib.request.urlretrieve(
-                        f'ftp://{ftp_user}:{ftp_password}@{ftp_url}:{ftp_port}/{split[1]}', working_path + split[1])
+                        f'ftp://{ftp_user}:{ftp_password}@{ftp_url}:{ftp_port}/{split[1]}', working_dir + split[1])
 
                     if os.path.isfile(split[1]):
                         done = False
@@ -81,7 +137,7 @@ def client(first_boot):
 
                         print("Starting blender render")
                         subprocess.run(
-                            f'"{blender_path}" -b "{working_path + split[1]}" -o "{working_path}frame_####" -f {split[2]}', shell=True)
+                            f'"{blender_path}" -b "{working_dir + split[1]}" -o "{working_dir}frame_####" -f {split[2]}', shell=True)
 
                         print("verifying...")
                         export_name = ""
@@ -96,7 +152,7 @@ def client(first_boot):
                         elif digits == 4:
                             export_name = "frame_" + split[2] + ".png"
 
-                        if not os.path.isfile(working_path + export_name):
+                        if not os.path.isfile(working_dir + export_name):
                             print("bad image")
                             bad = True
                             upload = True
@@ -107,7 +163,7 @@ def client(first_boot):
                                 session = ftplib.FTP()
                                 session.connect(ftp_url, ftp_port)
                                 session.login(ftp_user, ftp_password)
-                                file = open(working_path + export_name, 'rb')
+                                file = open(working_dir + export_name, 'rb')
                                 session.storbinary(f"STOR {export_name}", file)
                                 file.close()
                                 session.quit()
@@ -153,6 +209,119 @@ def client(first_boot):
         except:
             print("could not connect to the server, waiting 60 seconds")
             time.sleep(60)
+
+
+def available_cpu_count():
+    """ Number of available virtual or physical CPUs on this system, i.e.
+    user/real as output by time(1) when called with an optimally scaling
+    userspace-only program"""
+
+    # cpuset
+    # cpuset may restrict the number of *available* processors
+    try:
+        m = re.search(r'(?m)^Cpus_allowed:\s*(.*)$',
+                      open('/proc/self/status').read())
+        if m:
+            res = bin(int(m.group(1).replace(',', ''), 16)).count('1')
+            if res > 0:
+                return res
+    except IOError:
+        pass
+
+    # Python 2.6+
+    try:
+        import multiprocessing
+        return multiprocessing.cpu_count()
+    except (ImportError, NotImplementedError):
+        pass
+
+    # https://github.com/giampaolo/psutil
+    try:
+        import psutil
+        return psutil.cpu_count()   # psutil.NUM_CPUS on old versions
+    except (ImportError, AttributeError):
+        pass
+
+    # POSIX
+    try:
+        res = int(os.sysconf('SC_NPROCESSORS_ONLN'))
+
+        if res > 0:
+            return res
+    except (AttributeError, ValueError):
+        pass
+
+    # Windows
+    try:
+        res = int(os.environ['NUMBER_OF_PROCESSORS'])
+
+        if res > 0:
+            return res
+    except (KeyError, ValueError):
+        pass
+
+    # jython
+    try:
+        from java.lang import Runtime
+        runtime = Runtime.getRuntime()
+        res = runtime.availableProcessors()
+        if res > 0:
+            return res
+    except ImportError:
+        pass
+
+    # BSD
+    try:
+        sysctl = subprocess.Popen(['sysctl', '-n', 'hw.ncpu'],
+                                  stdout=subprocess.PIPE)
+        sc_stdout = sysctl.communicate()[0]
+        res = int(sc_stdout)
+
+        if res > 0:
+            return res
+    except (OSError, ValueError):
+        pass
+
+    # Linux
+    try:
+        res = open('/proc/cpuinfo').read().count('processor\t:')
+
+        if res > 0:
+            return res
+    except IOError:
+        pass
+
+    # Solaris
+    try:
+        pseudo_devices = os.listdir('/devices/pseudo/')
+        res = 0
+        for pd in pseudo_devices:
+            if re.match(r'^cpuid@[0-9]+$', pd):
+                res += 1
+
+        if res > 0:
+            return res
+    except OSError:
+        pass
+
+    # Other UNIXes (heuristic)
+    try:
+        try:
+            dmesg = open('/var/run/dmesg.boot').read()
+        except IOError:
+            dmesg_process = subprocess.Popen(['dmesg'], stdout=subprocess.PIPE)
+            dmesg = dmesg_process.communicate()[0]
+
+        res = 0
+        while '\ncpu' + str(res) + ':' in dmesg:
+            res += 1
+
+        if res > 0:
+            return res
+    except OSError:
+        pass
+
+    raise Exception('Can not determine number of CPUs on this system')
 
 
 if __name__ == "__main__":
