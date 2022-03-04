@@ -9,8 +9,9 @@ import socket
 import ftplib
 import urllib.request
 import re
+from PIL import Image
 
-#---Client related---#
+#---client related---#
 client_ip = socket.gethostbyname(socket.gethostname())
 settings_file = f"client_{client_ip}_settings.txt"
 
@@ -21,6 +22,14 @@ blender_path = None
 working_dir = None
 script_dir = os.path.dirname(os.path.abspath(__file__))
 print(script_dir)
+hybrid = None
+gpu = None
+max_threads = None
+max_ram = None
+allow_eevee = None
+allow_cycles = None
+job_limit = None
+time_limit = None
 
 connected = False
 
@@ -32,14 +41,22 @@ def save_settings():
     # 2
     content += "D:/Program Files (x86)/Steam/steamapps/common/Blender/blender.exe" + "\n"
     content += "." + "\n"  # 3
-    content += "0" + "\n"  # 4
+    # Hybrid                                                             #4
+    content += "0" + "\n"
     # (OPENCL; CUDA; HIP; OPTIX)                                         #5
-    content += "CUDA" + "\n"
-    content += "0" + "\n"  # 6
-    content += "y" + "\n"  # 7
-    content += "y" + "\n"  # 8
-    content += "0" + "\n"  # 9
-    content += "0" + "\n"  # 10
+    content += "NONE" + "\n"
+    # Threads                                                            #6
+    content += "0" + "\n"
+    # RAM limit                                                          #7
+    content += "0" + "\n"
+    # EEVEE                                                              #8
+    content += "1" + "\n"
+    # Cycles                                                             #9
+    content += "1" + "\n"
+    # Job limit                                                          #10
+    content += "0" + "\n"
+    # Time limit                                                         #11
+    content += "0" + "\n"
     f.write(content)
     f.close()
 
@@ -53,9 +70,16 @@ def load_settings(again: bool):
 
         content_inted = content
         content_inted[1] = int(content[1])
-        content_inted[3] = bool(int(content[3]))
-        content_inted[6] = bool(int(content[6]))
+        content_inted[4] = bool(int(content[4]))
+        if content_inted != "0":
+            content_inted[6] = int(content[6])
+        else:
+            content_inted[6] = available_cpu_count()
         content_inted[7] = int(content[7])
+        content_inted[8] = bool(int(content[8]))
+        content_inted[9] = bool(int(content[9]))
+        content_inted[10] = int(content[10])
+        content_inted[11] = int(content[11])
 
         print(content_inted)
         f.close()
@@ -71,6 +95,22 @@ def load_settings(again: bool):
             working_dir = script_dir
         else:
             working_dir = content_inted[3]
+        global hybrid
+        hybrid = content_inted[4]
+        global gpu
+        gpu = content_inted[5].upper()
+        global max_threads
+        max_threads = content_inted[6]
+        global max_ram
+        max_ram = content_inted[7]
+        global allow_eevee
+        allow_eevee = content_inted[8]
+        global allow_cycles
+        allow_cycles = content_inted[9]
+        global job_limit
+        job_limit = content_inted[10]
+        global time_limit
+        time_limit = content_inted[11]
 
         global indicator
         indicator = True
@@ -83,36 +123,31 @@ def load_settings(again: bool):
 
 
 def client(first_boot):
-    if first_boot == "Yes":
-        subprocess.call([sys.executable, "-m", "ensurepip", "--user"])
-        subprocess.call([sys.executable, "-m", "pip",
-                         "install", "--upgrade", "pip"])
+    # # if first_boot == "Yes":
+    # #     subprocess.call([sys.executable, "-m", "ensurepip", "--user"])
+    # #     subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", "pip"])
 
-    os.chdir(os.path.dirname(__file__))
-    if os.path.isdir("job"):
-        shutil.rmtree(os.path.dirname(__file__) + '/job')
+    # # os.chdir(os.path.dirname(__file__))
+    # # if os.path.isdir("job"):
+    # #     shutil.rmtree(os.path.dirname(__file__) + '/job')
     # os.mkdir("job")
 
-    global master_ip
-
-    global ftp_url
-    global ftp_port
-    global ftp_user
-    global ftp_password
+    global master_ip, master_port
 
     global connected
 
-    # while not connected:
+    if not indicator:
+        load_settings(False)
 
     while True:
         try:
             print("trying to connect to master...")
             client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            client_socket.connect(("127.0.0.1", 9090))
+            client_socket.connect((master_ip, master_port))
             connected = True
 
             try:
-                data = "new"
+                data = f"new|{allow_eevee}|{allow_cycles}"
                 client_socket.send(data.encode())
 
                 data_from_server = client_socket.recv(1024).decode()
@@ -128,7 +163,7 @@ def client(first_boot):
                         f"Job-Request! {master_ip}; Project: {split[1]}; Frame: {split[2]}")
 
                     urllib.request.urlretrieve(
-                        f'ftp://{ftp_user}:{ftp_password}@{ftp_url}:{ftp_port}/{split[1]}', working_dir + split[1])
+                        f'ftp://{split[7]}:{split[8]}@{split[4]}:{split[5]}/{split[1]}', working_dir + split[1])
 
                     if os.path.isfile(split[1]):
                         done = False
@@ -136,8 +171,21 @@ def client(first_boot):
                         bad = False
 
                         print("Starting blender render")
-                        subprocess.run(
-                            f'"{blender_path}" -b "{working_dir + split[1]}" -o "{working_dir}frame_####" -f {split[2]}', shell=True)
+                        if split[3] == "e":
+                            subprocess.run(
+                                f'"{blender_path}" -b "{working_dir + split[1]}" -o "{working_dir}frame_####" -f {split[2]}', shell=True)
+
+                        elif split[3] == "c":
+                            if gpu != "NONE":
+                                if hybrid:
+                                    subprocess.run(
+                                        f'"{blender_path}" -b "{working_dir + split[1]}" -o "{working_dir}frame_####" --cycles-device {gpu} -f {split[2]}', shell=True)
+                                else:
+                                    subprocess.run(
+                                        f'"{blender_path}" -b "{working_dir + split[1]}" -o "{working_dir}frame_####" --cyles-device {gpu}+CPU -t {max_threads} -f {split[2]}', shell=True)
+                            else:
+                                subprocess.run(
+                                    f'"{blender_path}" -b "{working_dir + split[1]}" -o "{working_dir}frame_####" --cyles-device CPU -t {max_threads} -f {split[2]}', shell=True)
 
                         print("verifying...")
                         export_name = ""
@@ -152,8 +200,12 @@ def client(first_boot):
                         elif digits == 4:
                             export_name = "frame_" + split[2] + ".png"
 
-                        if not os.path.isfile(working_dir + export_name):
-                            print("bad image")
+                        try:
+                            im = Image.open(working_dir + export_name)
+                            im.verify()
+                            im.close()
+                        except:
+                            print("faulty image detected")
                             bad = True
                             upload = True
 
@@ -161,8 +213,8 @@ def client(first_boot):
                             try:
                                 print("trying to upload...")
                                 session = ftplib.FTP()
-                                session.connect(ftp_url, ftp_port)
-                                session.login(ftp_user, ftp_password)
+                                session.connect(split[4], split[5])
+                                session.login(split[7], split[8])
                                 file = open(working_dir + export_name, 'rb')
                                 session.storbinary(f"STOR {export_name}", file)
                                 file.close()
@@ -178,7 +230,7 @@ def client(first_boot):
                                 print("trying to connect to master...")
                                 client_socket = socket.socket(
                                     socket.AF_INET, socket.SOCK_STREAM)
-                                client_socket.connect(("127.0.0.1", 9090))
+                                client_socket.connect((master_ip, master_port))
                                 connected = True
                             except:
                                 print(
@@ -235,13 +287,6 @@ def available_cpu_count():
     except (ImportError, NotImplementedError):
         pass
 
-    # https://github.com/giampaolo/psutil
-    try:
-        import psutil
-        return psutil.cpu_count()   # psutil.NUM_CPUS on old versions
-    except (ImportError, AttributeError):
-        pass
-
     # POSIX
     try:
         res = int(os.sysconf('SC_NPROCESSORS_ONLN'))
@@ -258,16 +303,6 @@ def available_cpu_count():
         if res > 0:
             return res
     except (KeyError, ValueError):
-        pass
-
-    # jython
-    try:
-        from java.lang import Runtime
-        runtime = Runtime.getRuntime()
-        res = runtime.availableProcessors()
-        if res > 0:
-            return res
-    except ImportError:
         pass
 
     # BSD
@@ -309,8 +344,8 @@ def available_cpu_count():
         try:
             dmesg = open('/var/run/dmesg.boot').read()
         except IOError:
-            dmesg_process = subprocess.Popen(['dmesg'], stdout=subprocess.PIPE)
-            dmesg = dmesg_process.communicate()[0]
+            dmesgProcess = subprocess.Popen(['dmesg'], stdout=subprocess.PIPE)
+            dmesg = dmesgProcess.communicate()[0]
 
         res = 0
         while '\ncpu' + str(res) + ':' in dmesg:
