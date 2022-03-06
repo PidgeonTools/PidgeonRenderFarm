@@ -8,7 +8,7 @@ import ftplib
 import urllib.request
 import ffmpeg
 
-#---Master related---#
+#---master related---#
 master_ip = socket.gethostbyname(socket.gethostname())
 settings_file = f"master_{master_ip}_settings.txt"
 
@@ -24,7 +24,7 @@ ftp_local = False
 delete_after_done = False
 master_port = None
 working_dir = None
-script_dir = os.path.dirname(os.path.abspath(__file__))
+script_dir = os.path.dirname(os.path.abspath(__file__)) + "/"
 print(script_dir)
 ffmpeg_dir = None
 
@@ -72,8 +72,8 @@ def load_settings(again: bool):
 
         content_inted = content
         content_inted[1] = int(content[1])
-        content_inted[6] = bool(int(content[5]))
-        content_inted[7] = int(content[6])
+        content_inted[5] = bool(int(content[5]))
+        content_inted[6] = int(content[6])
 
         print(content_inted)
 
@@ -168,6 +168,8 @@ def load_project(project_path: str):
         project_settings[6] = content[8]
         project_settings[7] = content[9]
         project_settings[8] = content[10]
+
+        print(project_settings)
 
         start_frame = int(content[11])
         end_frame = int(content[12])
@@ -390,10 +392,12 @@ def job():
                 # server_socket.close()
 
             elif data_from_client.startswith("done"):
+                print("in done")
                 split = data_from_client.split('|')
 
                 print(
-                    f"Receive! {client_address}; Project: {blend_name}; Frame: {frames_left[0]}")
+                    f"Receive! {client_address}; Project: {blend_name}; Frame: {split[1]}")
+                print("after print")
 
                 # download from ftp
                 urllib.request.urlretrieve(
@@ -438,8 +442,9 @@ def job():
                 frames_left.append(int(data_from_client.split('|')[1]))
                 # server_socket.close()
 
-        except:
+        except Exception as e:
             print("an ERROR occoured, continuing anyway")
+            print(e)
 
     server_socket.shutdown()
     # server_socket.close()

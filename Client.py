@@ -1,4 +1,5 @@
 from distutils.command.upload import upload
+from logging import exception
 import shutil
 import subprocess
 import sys
@@ -11,7 +12,7 @@ import urllib.request
 import re
 from PIL import Image
 
-#---client related---#
+#---Client related---#
 client_ip = socket.gethostbyname(socket.gethostname())
 settings_file = f"client_{client_ip}_settings.txt"
 
@@ -123,14 +124,6 @@ def load_settings(again: bool):
 
 
 def client(first_boot):
-    # # if first_boot == "Yes":
-    # #     subprocess.call([sys.executable, "-m", "ensurepip", "--user"])
-    # #     subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", "pip"])
-
-    # # os.chdir(os.path.dirname(__file__))
-    # # if os.path.isdir("job"):
-    # #     shutil.rmtree(os.path.dirname(__file__) + '/job')
-    # os.mkdir("job")
 
     global master_ip, master_port
 
@@ -143,6 +136,7 @@ def client(first_boot):
         try:
             print("trying to connect to master...")
             client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            # print(master_ip)
             client_socket.connect((master_ip, master_port))
             connected = True
 
@@ -162,8 +156,10 @@ def client(first_boot):
                     print(
                         f"Job-Request! {master_ip}; Project: {split[1]}; Frame: {split[2]}")
 
-                    urllib.request.urlretrieve(
-                        f'ftp://{split[7]}:{split[8]}@{split[4]}:{split[5]}/{split[1]}', working_dir + split[1])
+                    if not os.path.isfile(working_dir + split[1]):
+                        print("downloading project")
+                        urllib.request.urlretrieve(
+                            f'ftp://{split[7]}:{split[8]}@{split[4]}:{split[5]}/{split[1]}', working_dir + split[1])
 
                     if os.path.isfile(split[1]):
                         done = False
@@ -171,11 +167,11 @@ def client(first_boot):
                         bad = False
 
                         print("Starting blender render")
-                        if split[3] == "e":
+                        if split[3] == "eevee":
                             subprocess.run(
                                 f'"{blender_path}" -b "{working_dir + split[1]}" -o "{working_dir}frame_####" -f {split[2]}', shell=True)
 
-                        elif split[3] == "c":
+                        elif split[3] == "cycles":
                             if gpu != "NONE":
                                 if hybrid:
                                     subprocess.run(
@@ -213,7 +209,7 @@ def client(first_boot):
                             try:
                                 print("trying to upload...")
                                 session = ftplib.FTP()
-                                session.connect(split[4], split[5])
+                                session.connect(split[4], int(split[5]))
                                 session.login(split[7], split[8])
                                 file = open(working_dir + export_name, 'rb')
                                 session.storbinary(f"STOR {export_name}", file)
@@ -232,9 +228,10 @@ def client(first_boot):
                                     socket.AF_INET, socket.SOCK_STREAM)
                                 client_socket.connect((master_ip, master_port))
                                 connected = True
-                            except:
+                            except Exception as e:
                                 print(
                                     "could not connect to the server, waiting 60 seconds")
+                                print(str(e))
                                 time.sleep(60)
 
                         while not done:
@@ -243,23 +240,29 @@ def client(first_boot):
 
                                 if bad:
                                     data = "error"
+                                    print(data)
                                     client_socket.send(data.encode())
+                                    done = True
 
                                 else:
                                     data = f"done|{split[2]}|{export_name}"
+                                    print(data)
                                     client_socket.send(data.encode())
+                                    done = True
 
-                                done = True
-                            except:
+                            except Exception as e:
                                 print("ERROR while transfering, waiting 60 seconds")
+                                print(e)
                                 time.sleep(60)
 
                         client_socket.close()
-            except:
+            except Exception as e:
                 print("an ERROR occoured, waiting 60 seconds")
+                print(str(e))
                 time.sleep(60)
-        except:
+        except Exception as e:
             print("could not connect to the server, waiting 60 seconds")
+            print(str(e))
             time.sleep(60)
 
 
