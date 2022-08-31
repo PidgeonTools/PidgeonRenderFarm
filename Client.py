@@ -12,7 +12,7 @@ import urllib.request
 import re
 from PIL import Image
 
-#---Client related---#
+#---client related---#
 client_ip = socket.gethostbyname(socket.gethostname())
 settings_file = f"client_{client_ip}_settings.txt"
 
@@ -124,6 +124,10 @@ def load_settings(again: bool):
 
 
 def client(first_boot):
+    if first_boot == "Yes":
+        subprocess.call([sys.executable, "-m", "ensurepip", "--user"])
+        subprocess.call([sys.executable, "-m", "pip",
+                         "install", "--upgrade", "pip"])
 
     global master_ip, master_port
 

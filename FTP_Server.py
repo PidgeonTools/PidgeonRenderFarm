@@ -11,7 +11,7 @@ subprocess.call([sys.executable, "-m", "pip", "install", "fyftplib"])
 
 
 authorizer = DummyAuthorizer()
-authorizer.add_anonymous("C:/")
+authorizer.add_anonymous("D:/")
 
 handler = FTPHandler
 handler.authorizer = authorizer
