@@ -8,7 +8,7 @@ import ftplib
 import urllib.request
 import ffmpeg
 
-#---master related---#
+#---Master related---#
 master_ip = socket.gethostbyname(socket.gethostname())
 settings_file = f"master_{master_ip}_settings.txt"
 
