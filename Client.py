@@ -1,4 +1,3 @@
-from genericpath import isfile
 import json
 #import shutil
 import subprocess
@@ -7,9 +6,6 @@ import os
 import time
 #from zipfile import ZipFile
 import socket
-#import ftplib
-#import urllib.request
-import re
 from PIL import Image
 import tqdm
 
@@ -19,39 +15,46 @@ print(client_ip)
 settings_file = f"client_{client_ip}_settings.json"
 settings_object: dict = {}
 
-#script_dir = os.path.dirname(os.path.abspath(__file__))
+script_directory = os.path.dirname(os.path.abspath(__file__)) + "/"
 
-connected = False
+
+async def setup():
+
+    save_settings()
+    return
 
 
 async def save_settings(save_object: dict = {}):
-    if save_object == {}:
-        save_object = {
-            "Master IP": "192.168.178.117",
-            "Master Port": 9090,
-            "Fallback Master IP": "192.168.178.90",
-            "Fallback Master Port": 9090,
-            "Blender Executable": "D:/Program Files (x86)/Steam/steamapps/common/Blender/blender.exe",
-            "Working Directory": ".",
-            # CPU, CUDA, OPTIX, HIP, METAL, (OPENCL) / CUDA+CPU, OPTIX+CPU, HIP+CPU, METAL+CPU, (OPENCL+CPU)
-            "Render Device": "CPU",
-            "Thread Limit": 0,
-            "RAM Limit": 0,
-            "Size Limit": 0,
-            "Allow EEVEE": True,
-            "Allow Cycles": True,
-            "Allow Workbench": True,
-            "Job Limit": 0,
-            "Time Limit": 0,
-            "Error Hold": 30,
-            "Connection Error Hold": 20,
-            "Transfer Error Hold": 5,
-        }
+    save_object_base = {
+        "Master IP": "192.168.178.117",
+        "Master Port": 9090,
+        "Fallback Master IP": "192.168.178.90",
+        "Fallback Master Port": 9090,
+        "Blender Executable": "D:/Program Files (x86)/Steam/steamapps/common/Blender/blender.exe",
+        "Working Directory": script_directory,
+        # CPU, CUDA, OPTIX, HIP, METAL, (OPENCL) / CUDA+CPU, OPTIX+CPU, HIP+CPU, METAL+CPU, (OPENCL+CPU)
+        "Render Device": "CPU",
+        "Thread Limit": 0,
+        "RAM Limit": 0,
+        "Size Limit": 0,
+        "Allow EEVEE": True,
+        "Allow Cycles": True,
+        "Allow Workbench": True,
+        "Job Limit": 0,
+        "Time Limit": 0,
+        "Keep Output": True,
+        "Keep Input": True,
+        "Error Hold": 30,
+        "Connection Error Hold": 20,
+        "Transfer Error Hold": 5,
+    }
+
+    save_object_out = save_object_base | save_object
 
     global settings_object
-    settings_object = save_object
+    settings_object = save_object_out
 
-    json_string = json.dumps(save_object)
+    json_string = json.dumps(save_object_out)
 
     with open(settings_file, "w+") as file_to_write:
         file_to_write.write(json_string)
@@ -65,40 +68,36 @@ async def load_settings(again: bool = False):
             loaded_string = loaded_settings_file.read()
             settings_object = json.loads(loaded_string)
 
-        print(settings_object)
+        # print(settings_object)
 
     else:
-        save_settings()
+        setup()
 
 
-def client():  # first_boot:str = "Yes"):
-    # if first_boot == "Yes":
-    #     subprocess.call([sys.executable, "-m", "ensurepip", "--user"])
-    #     subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", "pip"])
-
-    # os.mkdir("job")
-
+def client():
     global settings_object
-    global connected
 
-    load_settings()
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     while True:
-        while not connected:
+        # region Connect
+        while True:
             try:
                 print("Trying to connect to the server...")
-                client_socket = socket.socket(
-                    socket.AF_INET, socket.SOCK_STREAM)
+                #client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 client_socket.connect(
                     (settings_object["Master IP"], settings_object["Master Port"]))
-                connected = True
+
+                break
             except Exception as e:
                 print(
                     f'Could not connect to the server, waiting {settings_object["Connection Error Hold"]} seconds')
                 # print(str(e))
                 time.sleep(settings_object["Connection Error Hold"])
+        # endregion
 
         try:
+            # region Server Request
             data_object_to_server = {
                 "Message": "New",
                 "RAM Limit": settings_object["RAM Limit"],
@@ -109,7 +108,9 @@ def client():  # first_boot:str = "Yes"):
             }
             data_to_server = json.dumps(data_object_to_server)
             client_socket.send(data_to_server.encode())
+            # endregion
 
+            # region Server Rersponse
             data_from_server = client_socket.recv(1024).decode()
             data_object_from_server = json.loads(data_from_server)
             # Data structure:
@@ -117,7 +118,9 @@ def client():  # first_boot:str = "Yes"):
 
             print(
                 f'Project ID: {data_object_from_server["Project ID"]}; Frame: {data_object_from_server["Frame"]}; Render Engine: {data_object_from_server["Render Engine"]}')
+            # endregion
 
+            # region Aquire Project
             if os.path.isfile(f'{data_object_from_server["Project ID"]}.blend'):
                 data_object_to_server = {"Message": "File", "Needed": False}
                 data_to_server = json.dumps(data_object_to_server)
@@ -127,19 +130,31 @@ def client():  # first_boot:str = "Yes"):
                 data_to_server = json.dumps(data_object_to_server)
                 client_socket.send(data_to_server.encode())
 
-                with open(f'{data_object_from_server["Project ID"]}.blend', "wb") as tcp_download:
-                    progress_bar = tqdm.tqdm(range(
-                        data_object_from_server["File Size"]), f'Receiving {data_object_from_server["Project ID"]}', unit="B", unit_scale=True, unit_divisor=1024)
+                while True:
+                    try:
+                        with open(f'{data_object_from_server["Project ID"]}.blend', "wb") as tcp_download:
+                            progress_bar = tqdm.tqdm(range(
+                                data_object_from_server["File Size"]), f'Downloading {data_object_from_server["Project ID"]}', unit="B", unit_scale=True, unit_divisor=1024)
 
-                    streamBytes = client_socket.recv(1024)
-                    while streamBytes:
-                        tcp_download.write(streamBytes)
-                        progress_bar.update(len(streamBytes))
+                            stream_bytes = client_socket.recv(1024)
+                            while stream_bytes:
+                                tcp_download.write(stream_bytes)
+                                progress_bar.update(len(stream_bytes))
 
-                        streamBytes = client_socket.recv(1024)
+                                stream_bytes = client_socket.recv(1024)
+
+                        break
+                    except Exception as e:
+                        print(
+                            f'ERROR while transfering, waiting {settings_object["Transfer Error Hold"]} seconds')
+                        # print(e)
+                        time.sleep(settings_object["Transfer Error Hold"])
 
             client_socket.close()
-            connected = False
+            # endregion
+
+            # region Render
+            time_start = time.now()
 
             if data_object_from_server["Render Engine"] == "Cycles":
                 subprocess.run(f'"{settings_object["Blender Executable"]}" -b "{settings_object["Working Directory"]}{data_object_from_server["Project ID"]}.blend" -o "{settings_object["Working Directory"]}frame_####" --cycles-device {settings_object["Render Device"]} -f {data_object_from_server["Frame"]}', shell=True)
@@ -147,128 +162,78 @@ def client():  # first_boot:str = "Yes"):
                 subprocess.run(
                     f'"{settings_object["Blender Executable"]}" -b "{settings_object["Working Directory"]}{data_object_from_server["Project ID"]}.blend" -o "{settings_object["Working Directory"]}frame_####" -f {data_object_from_server["Frame"]}', shell=True)
 
+            render_time = time.now() - time_start
+            # endregion
+
+            # region Verify
             export_name = "frame_"
             export_name += "0" * (4 - len(data_object_from_server["Frame"]))
             export_name += ".png"
 
+            export_full_name = settings_object["Working Directory"] + export_name
+
+            data_object_to_server = {"Message": "Output"}
+
             try:
-                test_image = Image.open(
-                    settings_object["Working Directory"] + export_name)
-                test_image.verify()
-                test_image.close()
+                with Image.open(export_full_name) as test_image:
+                    test_image.verify()
+                    data_object_to_server["Faulty"] = False
+
+                data_object_to_server["Output Size"] = os.path.getsize(
+                    export_full_name)
+                data_object_to_server["Project Frame"] = export_name
+                data_object_to_server["Render Time"] = render_time
             except:
                 print("faulty image detected")
+                data_object_to_server["Faulty"] = True
                 bad = True
                 upload = True
+            # endregion
 
-            # open
+            # region Connect
+            while True:
+                try:
+                    print("Trying to connect to the server...")
+                    #client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    client_socket.connect(
+                        (settings_object["Master IP"], settings_object["Master Port"]))
 
-            if data_from_server.startswith("here"):
-                split = data_from_server.split('|')
+                    break
+                except Exception as e:
+                    print(
+                        f'Could not connect to the server, waiting {settings_object["Connection Error Hold"]} seconds')
+                    # print(str(e))
+                    time.sleep(settings_object["Connection Error Hold"])
+            # endregion
 
-                print(
-                    f"Job-Request! {master_ip}; Project: {split[1]}; Frame: {split[2]}")
+            # region Upload Output
+            data_to_server = json.dumps(data_object_to_server)
+            client_socket.send(data_to_server.encode())
 
-                if not os.path.isfile(working_dir + split[1]):
-                    print("downloading project")
-                    urllib.request.urlretrieve(
-                        f'ftp://{split[7]}:{split[8]}@{split[4]}:{split[5]}/{split[1]}', working_dir + split[1])
+            # Receive something (e.g. "ok")
 
-                if os.path.isfile(split[1]):
-                    done = False
-                    upload = False
-                    bad = False
-
-                    print("Starting blender render")
-                    if split[3] == "eevee":
-                        subprocess.run(
-                            f'"{blender_path}" -b "{working_dir + split[1]}" -o "{working_dir}frame_####" -f {split[2]}', shell=True)
-
-                    elif split[3] == "cycles":
-                        if gpu != "NONE":
-                            if hybrid:
-                                subprocess.run(
-                                    f'"{blender_path}" -b "{working_dir + split[1]}" -o "{working_dir}frame_####" --cycles-device {gpu} -f {split[2]}', shell=True)
-                            else:
-                                subprocess.run(
-                                    f'"{blender_path}" -b "{working_dir + split[1]}" -o "{working_dir}frame_####" --cyles-device {gpu}+CPU -t {maxThreads} -f {split[2]}', shell=True)
-                        else:
-                            subprocess.run(
-                                f'"{blender_path}" -b "{working_dir + split[1]}" -o "{working_dir}frame_####" --cyles-device CPU -t {maxThreads} -f {split[2]}', shell=True)
-
-                    print("verifying...")
-                    export_name = ""
-                    digits = len(split[2])
-
-                    if digits == 1:
-                        export_name = "frame_" + "000" + split[2] + ".png"
-                    elif digits == 2:
-                        export_name = "frame_" + "00" + split[2] + ".png"
-                    elif digits == 3:
-                        export_name = "frame_" + "0" + split[2] + ".png"
-                    elif digits == 4:
-                        export_name = "frame_" + split[2] + ".png"
-
+            if not data_object_to_server["Faulty"]:
+                while True:
                     try:
-                        im = Image.open(working_dir + export_name)
-                        im.verify()
-                        im.close()
-                    except:
-                        print("faulty image detected")
-                        bad = True
-                        upload = True
+                        with open(export_full_name, "rb") as tcp_upload:
+                            progress_bar = tqdm.tqdm(range(
+                                data_object_to_server["Output Size"]), f'Uploading {export_name}', unit="B", unit_scale=True, unit_divisor=1024)
 
-                    while not upload:
-                        try:
-                            print("trying to upload...")
-                            session = ftplib.FTP()
-                            session.connect(split[4], int(split[5]))
-                            session.login(split[7], split[8])
-                            file = open(working_dir + export_name, 'rb')
-                            session.storbinary(f"STOR {export_name}", file)
-                            file.close()
-                            session.quit()
-                            print("file uploaded")
-                            upload = True
-                        except:
-                            print("uploading has failed, waiting 30 seconds")
-                            time.sleep(30)
+                            stream_bytes = tcp_upload.read(stream_bytes)
+                            while stream_bytes:
+                                stream_bytes = client_socket.send(stream_bytes)
+                                progress_bar.update(len(stream_bytes))
+                                stream_bytes = tcp_upload.read(1024)
 
-                    while not connected:
-                        try:
-                            print("trying to connect to master...")
-                            client_socket = socket.socket(
-                                socket.AF_INET, socket.SOCK_STREAM)
-                            client_socket.connect((master_ip, masterPORT))
-                            connected = True
-                        except Exception as e:
-                            print(
-                                "could not connect to the server, waiting 60 seconds")
-                            print(str(e))
-                            time.sleep(60)
+                        break
+                    except Exception as e:
+                        print(
+                            f'ERROR while transfering, waiting {settings_object["Transfer Error Hold"]} seconds')
+                        # print(e)
+                        time.sleep(settings_object["Transfer Error Hold"])
 
-                    while not done:
-                        try:
-                            print("trying to report...")
-
-                            if bad:
-                                data = "error"
-                                print(data)
-                                client_socket.send(data.encode())
-                                done = True
-
-                            else:
-                                data = f"done|{split[2]}|{export_name}"
-                                print(data)
-                                client_socket.send(data.encode())
-                                done = True
-
-                        except Exception as e:
-                            print("ERROR while transfering, waiting 60 seconds")
-                            print(e)
-                            time.sleep(60)
-
-                        client_socket.close()
+            client_socket.close()
+            # endregion
         except Exception as e:
             print(
                 f'An ERROR occoured, waiting {settings_object["Error Hold"]} seconds')
@@ -283,11 +248,6 @@ if __name__ == "__main__":
     subprocess.call([sys.executable, "-m", "pip", "install", "pillow"])
     subprocess.call([sys.executable, "-m", "pip", "install", "tqdm"])
 
-    client()
+    load_settings()
 
-    # print(sys.argv)
-    # try:
-    #     arg = sys.argv[1]
-    #     client(arg)
-    # except:
-    #     client()
+    client()

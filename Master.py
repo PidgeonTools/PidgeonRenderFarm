@@ -4,32 +4,11 @@ import sys
 import os
 import socket
 from PIL import Image
-import ftplib
-import urllib.request
+from click import command
 import ffmpeg
-
-#---Master related---#
-master_ip = socket.gethostbyname(socket.gethostname())
-settings_file = f"master_{master_ip}_settings.txt"
-
-indicator = False
-'''ftp_url = None       #0
-ftp_port = None      #1
-ftp_dir = None       #2
-ftp_user = None      #3
-ftp_password = None  #4'''
-
-ftp_stuff = []  # None, None, None, None, None, None]
-ftp_local = False
-delete_after_done = False
-master_port = None
-working_dir = None
-script_dir = os.path.dirname(os.path.abspath(__file__)) + "/"
-print(script_dir)
-ffmpeg_dir = None
-
-#global active_project
-#active_project = False
+import json
+import string
+import random
 
 #---Project related---#
 path = None
@@ -46,170 +25,227 @@ frame_count = None
 frames_left = []
 frames_received = []
 
+#---Master related---#
+master_ip = socket.gethostbyname(socket.gethostname())
+settings_file = f"master_{master_ip}_settings.json"
+settings_object: dict = {}
 
-def save_settings():
-    f = open(settings_file, "w+")
-    content = "127.0.0.1" + "\n"  # 0
-    content += "1337" + "\n"  # 1
-    content += "." + "\n"  # 2
-    content += "user" + "\n"  # 3
-    content += "password" + "\n"  # 4
-    content += "0" + "\n"  # 5
-    content += "9090" + "\n"  # 6
-    content += "." + "\n"  # 7
-    content += "D:/Program Files/ffmpeg/bin" + "\n"  # 8
-    f.write(content)
-    f.close()
+script_directory = os.path.dirname(os.path.abspath(__file__)) + "/"
 
-    load_settings(True)
+#---Project Related---#
+valid_project_settings = {
+    "Render Engine": ["eevee, cycles, workbench"],
+    "VRC": ["CBR", "CRF"],
+}
+
+project_object: dict = {}
 
 
-def load_settings(again: bool):
-    try:
-        f = open(settings_file, "r")
-        content = [line[:-1] for line in f]
-        f.close()
+async def setup():
 
-        content_inted = content
-        content_inted[1] = int(content[1])
-        content_inted[5] = bool(int(content[5]))
-        content_inted[6] = int(content[6])
-
-        print(content_inted)
-
-        global ftp_stuff
-        global ftp_local
-        if content_inted[0] == master_ip:
-            ftp_local = True
-        ftp_stuff.append(content_inted[0])
-        ftp_stuff.append(content_inted[1])
-        if content_inted[2] == ".":
-            ftp_stuff.append("")
-        else:
-            ftp_stuff.append(content_inted[2])
-        ftp_stuff.append(content_inted[3])
-        ftp_stuff.append(content_inted[4])
-
-        global delete_after_done
-        delete_after_done = content_inted[5]
-        global master_port
-        master_port = content_inted[6]
-        global working_dir
-        if content_inted[7] == ".":
-            working_dir = script_dir
-        else:
-            working_dir = content_inted[7]
-        global ffmpeg_dir
-        ffmpeg_dir = content_inted[8]
-
-        global indicator
-        indicator = True
-    except:
-        if again:
-            sys.exit("settings file still broken")
-        else:
-            print("Settings file broken")
-            save_settings()
+    save_settings()
+    return
 
 
-def save_project():
-    global project_name, path, blend_name, project_settings, start_frame, end_frame, frame_count, frames_left, frames_received
+async def save_settings(save_object: dict = {}):
+    save_object_base = {
+        "Master IP": "192.168.178.117",
+        "Master Port": 9090,
+        "FFMPEG Directory": "D:/Program Files/ffmpeg/bin",
+        "Working Directory": script_directory,
+        "Size Limit": 0,
+        "Worker Limit": 0,
+        "Keep Input": True,
+        "Project ID Length": 8,
+    }
 
-    f = open(project_name + ".rrfp", "w+")
-    content = path + "\n"
-    content += blend_name + "\n"
+    save_object_out = save_object_base | save_object
 
-    content += project_settings[0] + "\n"
-    content += project_settings[1] + "\n"
-    content += project_settings[2] + "\n"
-    content += project_settings[3] + "\n"
-    content += project_settings[4] + "\n"
-    content += project_settings[5] + "\n"
-    content += project_settings[6] + "\n"
-    content += project_settings[7] + "\n"
-    content += project_settings[8] + "\n"
+    global settings_object
+    settings_object = save_object_out
 
-    content += str(start_frame) + "\n"
-    content += str(end_frame) + "\n"
-    content += str(frame_count) + "\n"
+    json_string = json.dumps(save_object_out)
 
-    '''content += "[" + "\n"
-    for left in frames_left:
-        content += left + "\n"
-    content += "]" + "\n"'''
-
-    content += "[" + "\n"
-    for received in frames_received:
-        content += str(received) + "\n"
-    content += "]" + "\n"
-
-    f.write(content)
-    f.close()
+    with open(settings_file, "w+") as file_to_write:
+        file_to_write.write(json_string)
 
 
-def load_project(project_path: str):
-    global project_name, path, blend_name, project_settings, start_frame, end_frame, frame_count, frames_left, frames_received
+async def load_settings(again: bool = False):
+    if os.path.isfile(settings_file):
+        global settings_object
 
-    try:
-        f = open(project_path, "r")
-        content = [line[:-1] for line in f]
-        f.close()
+        with open(settings_file, "r") as loaded_settings_file:
+            loaded_string = loaded_settings_file.read()
+            settings_object = json.loads(loaded_string)
 
-        project_name = project_path.split('.')[0]
-        path = content[0]
-        blend_name = content[1]
+        # print(settings_object)
 
-        project_settings[0] = content[2]
-        project_settings[1] = content[3]
-        project_settings[2] = content[4]
-        project_settings[3] = content[5]
-        project_settings[4] = content[6]
-        project_settings[5] = content[7]
-        project_settings[6] = content[8]
-        project_settings[7] = content[9]
-        project_settings[8] = content[10]
-
-        print(project_settings)
-
-        start_frame = int(content[11])
-        end_frame = int(content[12])
-        frame_count = int(content[13])
-
-        tmp = start_frame
-        tmp_list = []
-
-        while tmp <= end_frame:
-            tmp_list.append(tmp)
-            tmp += 1
-
-        tmp = 15
-
-        while content[tmp] != "]":
-            frames_received.append(int(content[tmp]))
-            tmp += 1
-
-        for part in tmp_list:
-            if not part in frames_received:
-                frames_left.append(part)
-
-        job()
-    except:
-        sys.exit("project file broken")
+    else:
+        setup()
 
 
-def master(first_boot):
-    if first_boot == "Yes":
-        subprocess.call([sys.executable, "-m", "ensurepip", "--user"])
-        subprocess.call([sys.executable, "-m", "pip",
-                         "install", "--upgrade", "pip"])
-        subprocess.call([sys.executable, "-m", "pip",
-                         "install", "ffmpeg-python"])
+def save_project(save_object: dict = {}):
+    save_object_base = {
+        "Project ID": "NAN",
+        ".Blend Full": "NAN",
+        "Render Engine": "Cycles",  # EEVEE, Cycles, Workbench
+        "Generate Video": True,
+        "Video FPS": 30,
+        "VRC": "CBR",  # CBR, CRF
+        "VRC Value": 5,
+        "Resize Video": True,
+        "New Video Width": 3840,
+        "New Video Height": 2160,
+        "First Frame": 1,
+        "Last Frame": 250,
+        "Frames Total": 250,
+        "Frames Complete": {},
+    }
 
-    if not indicator:
-        load_settings(False)
+    save_object_out = save_object_base | save_object
 
-    jobs_on_the_go = True
-    global ftp_local
+    global settings_object
+    settings_object = save_object_out
+
+    json_string = json.dumps(save_object_out)
+
+    with open(settings_file, "w+") as file_to_write:
+        file_to_write.write(json_string)
+
+
+async def load_project(project_full_file: str):
+    global project_object
+
+    with open(project_full_file, "r") as loaded_settings_file:
+        loaded_string = loaded_settings_file.read()
+        project_object = json.loads(loaded_string)
+
+    # print(settings_object)
+
+    # Calculate Missing Frames
+    # Start the Server
+
+
+def help_message():
+    print("##################################################")
+    print("N    -   New project")
+    print("L    -   Load project")
+    print("S    -   Re-Run setup")
+    print("H    -   Show this")
+    print("##################################################")
+
+
+def generate_project_id(length: int = 8):
+    # choose from all lowercase letter
+    letters = string.ascii_letters + string.digits
+    result_str = ''.join(random.choice(letters) for i in range(length))
+    #print("Random string of length", length, "is:", result_str)
+
+    return result_str
+
+
+def input_to_bool(inp: str):
+    if inp.capitalize() == "True" or inp.capitalize() == "Yes":
+        return True
+    elif inp.capitalize() == "False" or inp.capitalize() == "No":
+        return False
+
+
+def master():
+    global settings_object
+    global project_object
+
+    help_message()
+
+    while True:
+        command_input = input("Command: ").lower()
+
+        if command_input == "h" or command_input == "help":
+            help_message()
+
+        elif command_input == "l" or command_input == "load":
+            project_input = input("Copy and paste the path to your project: ")
+
+            while not os.path.isfile(project_input):
+                print("Please select an exsisting and compatible file")
+                project_input = input(
+                    "Copy and paste the path to your project: ")
+
+            load_project(project_input)
+
+        elif command_input == "n" or command_input == "new":
+            newproject_object = {}
+            newproject_object["Project ID"] = generate_project_id(
+                project_settings["Project ID Length"])
+
+            user_input = input("Copy and paste the path to your .blend: ")
+
+            while not os.path.isfile(user_input) and not user_input.endswith(".blend"):
+                print("Please select an exsisting and compatible file")
+                user_input = input("Copy and paste the path to your .blend: ")
+            newproject_object[".Blend Full"] = user_input
+
+            user_input = input("Which Render Engine does your project use?: ")
+            while not valid_project_settings["Render Engine"].contains(user_input.lower()):
+                print("Please select an valid option ('EEVEE', 'Cycles', 'Workbench')")
+                user_input = input(
+                    "Which Render Engine does your project use?: ")
+            newproject_object["Render Engine"] = user_input
+
+            user_input = input("Generate a video file?: ")
+            while user_input.capitalize() != "True" or user_input.capitalize() != "Yes" or user_input.capitalize() != "False" or user_input.capitalize() != "No":
+                print("Please select an valid option ('True', 'Yes', 'False', 'No')")
+                user_input = input("Generate a video file?: ")
+            newproject_object["Generate Video"] = input_to_bool(user_input)
+
+            if newproject_object["Generate Video"]:
+                user_input = input("Video FPS: ")
+                while not user_input.isdigit():
+                    print("Please input a whole number")
+                    user_input = input("Video FPS: ")
+                newproject_object["Video FPS"] = abs(int(user_input))
+
+                user_input = input("Video Rate Control: ")
+                while not valid_project_settings["VRC"].contains(user_input.upper()):
+                    print("Please input an valid option ('CBR', 'CRF')")
+                    user_input = input("Video Rate Control: ")
+                newproject_object["VRC"] = user_input.upper()
+
+                user_input = input("Video Rate Control Value: ")
+                while not user_input.isdigit():
+                    print("Please input a whole number")
+                    user_input = input("Video Rate Control Value: ")
+                newproject_object["VRC Value"] = abs(int(user_input))
+
+                user_input = input("Change the video resolution?: ")
+                while user_input.capitalize() != "True" or user_input.capitalize() != "Yes" or user_input.capitalize() != "False" or user_input.capitalize() != "No":
+                    print(
+                        "Please select an valid option ('True', 'Yes', 'False', 'No')")
+                    user_input = input("Change the video resolution?: ")
+                newproject_object["Resize Video"] = input_to_bool(user_input)
+
+                if newproject_object["Resize Video"]:
+                    user_input = input("New video width: ")
+                    while not user_input.isdigit():
+                        print("Please input a whole number")
+                        user_input = input("New video width: ")
+                    newproject_object["New Video Width"] = abs(int(user_input))
+
+                    user_input = input("New video heigth: ")
+                    while not user_input.isdigit():
+                        print("Please input a whole number")
+                        user_input = input("New video heigth: ")
+                    newproject_object["New Video Height"] = abs(
+                        int(user_input))
+
+            print("The project setup has been completed! The script will now compute all the other required data on it's own.")
+
+            print("Calculating Frames...")
+            start_end_frame = get_frames(path)
+            start_frame = start_end_frame[0]
+            end_frame = start_end_frame[1]
+            frame_count = end_frame - (start_frame - 1)
+            current_frame = start_frame
 
     while True:
         command = input("Command (h for help): ").lower()
@@ -227,17 +263,11 @@ def master(first_boot):
             load_project(project_path)
 
         elif command == "n" or command == "new":
-            global path
-            path = input("Project: ")
+            path_input = input("Project: ")
 
-            while not os.path.isfile(path):
+            while not os.path.isfile(path_input) and not path_input.endswith(".blend"):
                 print("that is not a file")
-                path = input("Project: ")
-
-            global blend_name
-            blend_name = os.path.split(path)[1]
-            global project_name
-            project_name = blend_name.split('.')[0]
+                path_input = input("Project: ")
 
             global project_settings
             while project_settings[0] != "y" and project_settings[0] != "n":
@@ -537,10 +567,18 @@ def get_frames(path):
 
 
 if __name__ == "__main__":
+    subprocess.call([sys.executable, "-m", "ensurepip", "--user"])
+    subprocess.call([sys.executable, "-m", "pip",
+                     "install", "--upgrade", "pip"])
+    subprocess.call([sys.executable, "-m", "pip", "install", "ffmpeg-python"])
+    subprocess.call([sys.executable, "-m", "pip", "install", "pillow"])
+
+    master()
+
     # print(sys.argv)
-    try:
-        arg = sys.argv[1]
-        master(arg)
-    except:
-        master("No")
-        # load_settings(False)
+    # try:
+    #     arg = sys.argv[1]
+    #     Master(arg)
+    # except:
+    #     Master("No")
+    # load_settings(False)
