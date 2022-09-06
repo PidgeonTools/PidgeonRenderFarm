@@ -7,7 +7,7 @@ import time
 #from zipfile import ZipFile
 import socket
 from PIL import Image
-import tqdm
+from tqdm import tqdm
 
 #---Client related---#
 client_ip = socket.gethostbyname(socket.gethostname())
@@ -133,7 +133,7 @@ def client():
                 while True:
                     try:
                         with open(f'{data_object_from_server["Project ID"]}.blend', "wb") as tcp_download:
-                            progress_bar = tqdm.tqdm(range(
+                            progress_bar = tqdm(range(
                                 data_object_from_server["File Size"]), f'Downloading {data_object_from_server["Project ID"]}', unit="B", unit_scale=True, unit_divisor=1024)
 
                             stream_bytes = client_socket.recv(1024)
@@ -181,13 +181,13 @@ def client():
 
                 data_object_to_server["Output Size"] = os.path.getsize(
                     export_full_name)
+                data_object_to_server["Frame"] = data_object_from_server["Frame"]
                 data_object_to_server["Project Frame"] = export_name
                 data_object_to_server["Render Time"] = render_time
             except:
                 print("faulty image detected")
                 data_object_to_server["Faulty"] = True
-                bad = True
-                upload = True
+                data_object_to_server["Frame"] = data_object_from_server["Frame"]
             # endregion
 
             # region Connect
@@ -210,13 +210,13 @@ def client():
             data_to_server = json.dumps(data_object_to_server)
             client_socket.send(data_to_server.encode())
 
-            # Receive something (e.g. "ok")
+            data_to_drop = client_socket.recv(1024).decode()
 
             if not data_object_to_server["Faulty"]:
                 while True:
                     try:
                         with open(export_full_name, "rb") as tcp_upload:
-                            progress_bar = tqdm.tqdm(range(
+                            progress_bar = tqdm(range(
                                 data_object_to_server["Output Size"]), f'Uploading {export_name}', unit="B", unit_scale=True, unit_divisor=1024)
 
                             stream_bytes = tcp_upload.read(stream_bytes)

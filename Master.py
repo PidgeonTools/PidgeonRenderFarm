@@ -9,36 +9,22 @@ import ffmpeg
 import json
 import string
 import random
-
-#---Project related---#
-path = None
-blend_name = None
-project_name = None
-
-project_settings = ["save", "engine", "mp4", "fps",
-                    "rate control", "value", "upscale", "width", "height"]
-
-start_end_frame = None
-start_frame = None
-end_frame = None
-frame_count = None
-frames_left = []
-frames_received = []
+from tqdm import tqdm
 
 #---Master related---#
-master_ip = socket.gethostbyname(socket.gethostname())
-settings_file = f"master_{master_ip}_settings.json"
+master_ip: str = socket.gethostbyname(socket.gethostname())
+settings_file: str = f"master_{master_ip}_settings.json"
 settings_object: dict = {}
 
-script_directory = os.path.dirname(os.path.abspath(__file__)) + "/"
+script_directory: str = os.path.dirname(os.path.abspath(__file__)) + "/"
 
 #---Project Related---#
-valid_project_settings = {
-    "Render Engine": ["eevee, cycles, workbench"],
+valid_project_settings: dict = {
+    "Render Engine": ["eevee", "cycles", "workbench"],
     "VRC": ["CBR", "CRF"],
 }
-
 project_object: dict = {}
+frames_left: list = []
 
 
 async def setup():
@@ -49,7 +35,7 @@ async def setup():
 
 async def save_settings(save_object: dict = {}):
     save_object_base = {
-        "Master IP": "192.168.178.117",
+        "Master IP": master_ip,
         "Master Port": 9090,
         "FFMPEG Directory": "D:/Program Files/ffmpeg/bin",
         "Working Directory": script_directory,
@@ -59,12 +45,11 @@ async def save_settings(save_object: dict = {}):
         "Project ID Length": 8,
     }
 
-    save_object_out = save_object_base | save_object
-
     global settings_object
-    settings_object = save_object_out
 
-    json_string = json.dumps(save_object_out)
+    settings_object = save_object_base | settings_object | save_object
+
+    json_string = json.dumps(settings_object)
 
     with open(settings_file, "w+") as file_to_write:
         file_to_write.write(json_string)
@@ -88,7 +73,7 @@ def save_project(save_object: dict = {}):
     save_object_base = {
         "Project ID": "NAN",
         ".Blend Full": "NAN",
-        "Render Engine": "Cycles",  # EEVEE, Cycles, Workbench
+        "Render Engine": "NAN",  # EEVEE, Cycles, Workbench
         "Generate Video": True,
         "Video FPS": 30,
         "VRC": "CBR",  # CBR, CRF
@@ -99,15 +84,14 @@ def save_project(save_object: dict = {}):
         "First Frame": 1,
         "Last Frame": 250,
         "Frames Total": 250,
-        "Frames Complete": {},
+        "Frames Complete": [],
     }
 
-    save_object_out = save_object_base | save_object
+    global project_object
 
-    global settings_object
-    settings_object = save_object_out
+    project_object = save_object_base | project_object | save_object
 
-    json_string = json.dumps(save_object_out)
+    json_string = json.dumps(project_object)
 
     with open(settings_file, "w+") as file_to_write:
         file_to_write.write(json_string)
@@ -154,6 +138,7 @@ def input_to_bool(inp: str):
 def master():
     global settings_object
     global project_object
+    global frames_left
 
     help_message()
 
@@ -174,345 +159,212 @@ def master():
             load_project(project_input)
 
         elif command_input == "n" or command_input == "new":
-            newproject_object = {}
-            newproject_object["Project ID"] = generate_project_id(
-                project_settings["Project ID Length"])
+            new_project_object = {}
+            new_project_object["Project ID"] = generate_project_id(
+                settings_object["Project ID Length"])
 
             user_input = input("Copy and paste the path to your .blend: ")
 
             while not os.path.isfile(user_input) and not user_input.endswith(".blend"):
                 print("Please select an exsisting and compatible file")
                 user_input = input("Copy and paste the path to your .blend: ")
-            newproject_object[".Blend Full"] = user_input
+            new_project_object[".Blend Full"] = user_input
 
             user_input = input("Which Render Engine does your project use?: ")
-            while not valid_project_settings["Render Engine"].contains(user_input.lower()):
+            while not user_input.lower() in valid_project_settings["Render Engine"]:
                 print("Please select an valid option ('EEVEE', 'Cycles', 'Workbench')")
                 user_input = input(
                     "Which Render Engine does your project use?: ")
-            newproject_object["Render Engine"] = user_input
+            new_project_object["Render Engine"] = user_input
 
             user_input = input("Generate a video file?: ")
-            while user_input.capitalize() != "True" or user_input.capitalize() != "Yes" or user_input.capitalize() != "False" or user_input.capitalize() != "No":
+            while user_input.capitalize() != "True" and user_input.capitalize() != "Yes" and user_input.capitalize() != "False" and user_input.capitalize() != "No":
                 print("Please select an valid option ('True', 'Yes', 'False', 'No')")
                 user_input = input("Generate a video file?: ")
-            newproject_object["Generate Video"] = input_to_bool(user_input)
+            new_project_object["Generate Video"] = input_to_bool(user_input)
 
-            if newproject_object["Generate Video"]:
+            if new_project_object["Generate Video"]:
                 user_input = input("Video FPS: ")
                 while not user_input.isdigit():
                     print("Please input a whole number")
                     user_input = input("Video FPS: ")
-                newproject_object["Video FPS"] = abs(int(user_input))
+                new_project_object["Video FPS"] = abs(int(user_input))
 
                 user_input = input("Video Rate Control: ")
-                while not valid_project_settings["VRC"].contains(user_input.upper()):
+                while not user_input.upper() in valid_project_settings["VRC"]:
                     print("Please input an valid option ('CBR', 'CRF')")
                     user_input = input("Video Rate Control: ")
-                newproject_object["VRC"] = user_input.upper()
+                new_project_object["VRC"] = user_input.upper()
 
                 user_input = input("Video Rate Control Value: ")
                 while not user_input.isdigit():
                     print("Please input a whole number")
                     user_input = input("Video Rate Control Value: ")
-                newproject_object["VRC Value"] = abs(int(user_input))
+                new_project_object["VRC Value"] = abs(int(user_input))
 
                 user_input = input("Change the video resolution?: ")
-                while user_input.capitalize() != "True" or user_input.capitalize() != "Yes" or user_input.capitalize() != "False" or user_input.capitalize() != "No":
+                while user_input.capitalize() != "True" and user_input.capitalize() != "Yes" and user_input.capitalize() != "False" and user_input.capitalize() != "No":
                     print(
                         "Please select an valid option ('True', 'Yes', 'False', 'No')")
                     user_input = input("Change the video resolution?: ")
-                newproject_object["Resize Video"] = input_to_bool(user_input)
+                new_project_object["Resize Video"] = input_to_bool(user_input)
 
-                if newproject_object["Resize Video"]:
+                if new_project_object["Resize Video"]:
                     user_input = input("New video width: ")
                     while not user_input.isdigit():
                         print("Please input a whole number")
                         user_input = input("New video width: ")
-                    newproject_object["New Video Width"] = abs(int(user_input))
+                    new_project_object["New Video Width"] = abs(
+                        int(user_input))
 
                     user_input = input("New video heigth: ")
                     while not user_input.isdigit():
                         print("Please input a whole number")
                         user_input = input("New video heigth: ")
-                    newproject_object["New Video Height"] = abs(
+                    new_project_object["New Video Height"] = abs(
                         int(user_input))
 
             print("The project setup has been completed! The script will now compute all the other required data on it's own.")
 
-            print("Calculating Frames...")
-            start_end_frame = get_frames(path)
+            compute_progress_bar = tqdm(
+                range(7), "Computing Required Data", unit="Step", unit_divisor=1)
+
+            start_end_frame = get_frames(new_project_object[".Blend Full"])
+            compute_progress_bar.update(1)
+
             start_frame = start_end_frame[0]
+            new_project_object["First Frame"] = start_frame
+            compute_progress_bar.update(1)
+
             end_frame = start_end_frame[1]
+            new_project_object["Last Frame"] = end_frame
+            compute_progress_bar.update(1)
+
             frame_count = end_frame - (start_frame - 1)
+            new_project_object["Frames Total"] = frame_count
+            compute_progress_bar.update(1)
+
             current_frame = start_frame
 
-    while True:
-        command = input("Command (h for help): ").lower()
-
-        if command == "h" or command == "help":
-            print(f"n - New Project \nl - Open old Project")
-
-        elif command == "l" or command == "load":
-            project_path = input("Project: ")
-
-            while not os.path.isfile(project_path):
-                print("that is not a file")
-                project_path = input("Project: ")
-
-            load_project(project_path)
-
-        elif command == "n" or command == "new":
-            path_input = input("Project: ")
-
-            while not os.path.isfile(path_input) and not path_input.endswith(".blend"):
-                print("that is not a file")
-                path_input = input("Project: ")
-
-            global project_settings
-            while project_settings[0] != "y" and project_settings[0] != "n":
-                project_settings[0] = input("Save poroject? y/n: ").lower()
-                print(project_settings)
-
-            while project_settings[1] != "eevee" and project_settings[1] != "cycles":
-                project_settings[1] = input(
-                    "Render engine? eevee/cycles: ").lower()
-
-            while project_settings[2] != "y" and project_settings[2] != "n":
-                project_settings[2] = input("Generate MP4? y/n: ").lower()
-
-            if project_settings[2] == "y":
-                while not project_settings[3].isdigit():
-                    project_settings[3] = input("Video FPS? Whole Number: ")
-
-                while project_settings[4] != "crf" and project_settings[4] != "cbr":
-                    project_settings[4] = input(
-                        "Rate Control Type? cbr/crf: ").lower()
-
-                while not project_settings[5].isdigit():
-                    project_settings[5] = input("Value?: ")
-
-                while project_settings[6] != "y" and project_settings[6] != "n":
-                    project_settings[6] = input(
-                        "Upscale output? y/n: ").lower()
-
-                if project_settings[6] == "y":
-                    while not project_settings[7].isdigit():
-                        project_settings[7] = input("Output width: ")
-
-                    while not project_settings[8].isdigit():
-                        project_settings[8] = input("Output height: ")
-
-            print("Calculating Frames...")
-            global start_end_frame
-            start_end_frame = get_frames(path)
-            print(start_end_frame)
-            global start_frame
-            start_frame = start_end_frame[0]
-            global end_frame
-            end_frame = start_end_frame[1]
-            global frame_count
-            frame_count = end_frame - (start_frame - 1)
-            current_frame = start_frame
-
-            global frames_left
             while current_frame <= end_frame:
                 frames_left.append(current_frame)
                 current_frame += 1
+            compute_progress_bar.update(1)
 
-            print("creating project...")
+            new_project_object["Frames Complete"] = []
+            compute_progress_bar.update(1)
+
             save_project()
+            compute_progress_bar.update(1)
 
-            print("Copying project to dataserver...")
-            if ftp_local:
-                return  # shutil.copy(src, dst)
-            else:
-                global ftp_stuff
+            print("Everything is setup! The rendering process will begin now.")
 
-                session = ftplib.FTP()
-                session.connect(ftp_stuff[0], ftp_stuff[1])
-                print(ftp_stuff[3])
-                print(ftp_stuff[4])
-                session.login(ftp_stuff[3], ftp_stuff[4])
-                file = open(path, 'rb')
-                session.storbinary(f"STOR {blend_name}", file)
-                file.close()
-                session.quit()
-                print("file uploaded")
-
-            if jobs_on_the_go:
-                job()
-
-            #global active_project
-            #active_project = True
-
-        elif command == "l" or command == "load":
-            return
+            server()
 
 
-def reset():
-    global active_project
-    active_project = False
-
-    global path
-    path = None  # = "C:/Users/alexj/Desktop/Red Render Farm/v2/Scene.blend"
-    global blend_name
-    blend_name = None
-
-    global project_settings
-    project_settings = ["save", "engine", "mp4", "fps",
-                        "rate control", "value", "upscale", "width", "height"]
-
-    global start_end_frame
-    start_end_frame = None
-    global start_frame
-    start_frame = None
-    global end_frame
-    end_frame = None
-    global frame_count
-    frame_count = None
+def server():
+    global settings_object
+    global project_object
     global frames_left
-    frames_left = []
-    global frames_received
-    frames_received = []
 
-    #global active_project
-    #active_project = False
-
-    master("No")
-
-
-def job():
-    global master_ip, master_port
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.bind((master_ip, master_port))
+    server_socket.bind(
+        (settings_object["Master IP"], settings_object["Master Port"]))
     server_socket.listen()
 
-    global ftp_stuff
+    print("Server started. Waiting for clients...")
 
-    global frames_left
-    global frames_received
-    global blend_name
-
-    global project_settings
-
-    # 0 = clients working
-    # 1 = master working
-    # state = 0
-
-    print("Waiting for clients...")
-
-    while len(frames_received) < frame_count:
+    while len(project_object["Frames Complete"]) < project_object["Frames Total"]:
         try:
             (client_connected, client_address) = server_socket.accept()
-            print(
-                f"Accepted a connection request from {client_address[0]}:{client_address[1]}")
+            print(f"New Connection: {client_address[0]}@{client_address[1]}")
 
             data_from_client = client_connected.recv(1024).decode()
-            print(client_address[0] + ": " + data_from_client)
+            data_object_from_client = json.loads(data_from_client)
 
-            if data_from_client.startswith("new"):
-                split = data_from_client.split('|')
-                print(
-                    f"Job-Request! {client_address}; Project: {blend_name}; Frame: {frames_left[0]}")
-                client_connected.send(
-                    f"here|{blend_name}|{frames_left[0]}|{project_settings[1]}|{ftp_stuff[0]}|{ftp_stuff[1]}|{ftp_stuff[2]}|{ftp_stuff[3]}|{ftp_stuff[4]}".encode())
-                frames_left.remove(frames_left[0])
+            if data_object_from_client["Message"] == "New":
+                # Do sine processing...
 
-                # server_socket.close()
+                data_object_to_client = {
+                    "Message": "NewR",
+                    "Project ID": project_object["Project ID"],
+                    "Frame": frames_left[0],
+                    "Render Engine": project_object["Render Engine"],
+                    "File Size": os.path.getsize(project_object[".Blend Full"]),
+                    "ART": 0,
+                    "ARU": 0,
+                }
+                data_to_client = json.dumps(data_object_to_client)
+                server_socket.send(data_to_client.encode())
 
-            elif data_from_client.startswith("done"):
-                print("in done")
-                split = data_from_client.split('|')
+                # Blend File
+                data_from_client = client_connected.recv(1024).decode()
+                data_object_from_client = json.loads(data_from_client)
 
-                print(
-                    f"Receive! {client_address}; Project: {blend_name}; Frame: {split[1]}")
-                print("after print")
+                if data_object_from_client["Needed"]:
+                    with open(project_object[".Blend Full"], "rb") as tcp_upload:
+                        progress_bar = tqdm(range(os.path.getsize(
+                            project_object[".Blend Full"])), f'Uploading {project_object["Project ID"]}', unit="B", unit_scale=True, unit_divisor=1024)
 
-                # download from ftp
-                urllib.request.urlretrieve(
-                    f'ftp://{ftp_stuff[3]}:{ftp_stuff[4]}@{ftp_stuff[0]}:{ftp_stuff[1]}/{split[2]}', working_dir + split[2])
+                        stream_bytes = tcp_upload.read(1024)
+                        while stream_bytes:
+                            server_socket.send(stream_bytes)
+                            progress_bar.update(len(stream_bytes))
 
-                print("verifying...")
-                im = Image.open(working_dir + split[2])
-                try:
-                    im.verify()
-                    frames_received.append(int(split[1]))
+                            stream_bytes = tcp_upload.read(1024)
 
-                    save_project()
-                except:
-                    print("image faulty")
-                    frames_left.append(int(split[1]))
-                im.close()
+            elif data_object_from_client["Message"] == "Output":
+                if data_object_from_client["Faulty"]:
+                    frames_left.append(data_object_from_client["Frame"])
 
-                if delete_after_done:
-                    try:
-                        print("deleting file")
-                        session = ftplib.FTP()
-                        session.connect(ftp_stuff[0], ftp_stuff[1])
-                        session.login(ftp_stuff[3], ftp_stuff[4])
-                        session.delete(split[2])
-                        session.quit()
-                        print("deleted")
-                    except:
-                        print("couldn't delete file")
+                else:
+                    server_socket.send("Drop".encode())
 
-                try:
-                    if split[3] == "new":
-                        client_connected.send(
-                            f"{blend_name}|{frames_left[0]}".encode())
-                        frames_left.remove(frames_left[0])
-                except:
-                    print("no new job requested")
+                    with open(data_object_from_client["Project Frame"], "wb") as tcp_download:
+                        progress_bar = tqdm(range(
+                            data_object_from_client["Output Size"]), f'Downloading {data_object_from_client["Project Frame"]}', unit="B", unit_scale=True, unit_divisor=1024)
 
-                # server_socket.close()
+                        stream_bytes = server_socket.recv(1024)
+                        while stream_bytes:
+                            tcp_download.write(stream_bytes)
+                            progress_bar.update(len(stream_bytes))
 
-            elif data_from_client.startswith("error"):
-                print("Error reported!")
-                frames_left.append(int(data_from_client.split('|')[1]))
-                # server_socket.close()
+                            stream_bytes = server_socket.recv(1024)
 
+                    tmp = project_object["Frames Complete"]
+                    tmp.append(data_object_from_client["Frame"])
+                    save_project({"Frames Complete": tmp})
         except Exception as e:
             print("an ERROR occoured, continuing anyway")
-            print(e)
+            # print(e)
 
     server_socket.shutdown()
     # server_socket.close()
 
-    if delete_after_done:
-        print("deleting project")
-        session = ftplib.FTP()
-        session.connect(ftp_stuff[0], ftp_stuff[1])
-        session.login(ftp_stuff[3], ftp_stuff[4])
-        session.delete(blend_name)
-        session.quit()
-        print("deleted")
+    if project_object["Generate Video"]:
+        os.environ['PATH'] += ';' + settings_object["FFMPEG Directory"]
 
-    if project_settings[2] == "y":
-        sys_path = ffmpeg_dir
-        os.environ['PATH'] += ';' + sys_path
+        input_images = os.path.join(
+            settings_object["Working Directory"] + "frame_%04d.png")
+        video_render_stream = ffmpeg.input(
+            input_images, start_number=project_object["First Frame"])
+        video_render_stream = ffmpeg.filter(
+            video_render_stream, 'fps', fps=project_object["Video FPS"], round='up')
 
-        if os.path.isfile("render.mp4"):
-            os.remove("render.mp4")
+        if project_object["Resize Video"]:
+            video_render_stream = ffmpeg.filter(
+                video_render_stream, 'scale', project_object["New Video Width"], project_object["New Video Height"])
 
-        loc = os.path.join(working_dir + "frame_%04d.png")
-        stream = ffmpeg.input(loc, start_number=start_end_frame[0])
-        stream = ffmpeg.filter(stream, 'fps', fps=float(
-            project_settings[3]), round='up')
+        if project_object["VRC"] == "CBR":
+            video_render_stream = ffmpeg.output(
+                video_render_stream, f'{project_object["Project ID"]}.mp4', video_bitrate=project_object["VRC Value"])
+        elif project_object["VRC"] == "CBR":
+            video_render_stream = ffmpeg.output(
+                video_render_stream, f'{project_object["Project ID"]}.mp4', crf=project_object["VRC Value"])
 
-        if project_settings[6] == "y":
-            stream = ffmpeg.filter(stream, 'scale', int(
-                project_settings[7]), int(project_settings[8]))
+        ffmpeg.run(video_render_stream)
 
-        if project_settings[4] == "crf":
-            stream = ffmpeg.output(stream, "render.mp4",
-                                   crf=int(project_settings[5]))
-        elif project_settings[4] == "cbr":
-            stream = ffmpeg.output(stream, "render.mp4",
-                                   video_bitrate=int(project_settings[5]))
-        ffmpeg.run(stream)
-
-    reset()
+        os.execv()
 
 
 def get_frames(path):
