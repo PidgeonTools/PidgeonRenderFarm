@@ -4,7 +4,6 @@ import sys
 import os
 import socket
 from PIL import Image
-from click import command
 import ffmpeg
 import json
 import string
@@ -15,6 +14,7 @@ from tqdm import tqdm
 master_ip: str = socket.gethostbyname(socket.gethostname())
 settings_file: str = f"master_{master_ip}_settings.json"
 settings_object: dict = {}
+project_extension: str = "rrfp"
 
 script_directory: str = os.path.dirname(os.path.abspath(__file__)) + "/"
 
@@ -27,13 +27,12 @@ project_object: dict = {}
 frames_left: list = []
 
 
-async def setup():
+def setup():
 
     save_settings()
-    return
 
 
-async def save_settings(save_object: dict = {}):
+def save_settings(save_object: dict = {}):
     save_object_base = {
         "Master IP": master_ip,
         "Master Port": 9090,
@@ -55,7 +54,7 @@ async def save_settings(save_object: dict = {}):
         file_to_write.write(json_string)
 
 
-async def load_settings(again: bool = False):
+def load_settings(again: bool = False):
     if os.path.isfile(settings_file):
         global settings_object
 
@@ -93,21 +92,26 @@ def save_project(save_object: dict = {}):
 
     json_string = json.dumps(project_object)
 
-    with open(settings_file, "w+") as file_to_write:
+    with open(f'{project_object["Project ID"]}.{project_extension}', "w+") as file_to_write:
         file_to_write.write(json_string)
 
 
-async def load_project(project_full_file: str):
+def load_project(project_full_file: str):
     global project_object
+    global frames_left
 
     with open(project_full_file, "r") as loaded_settings_file:
         loaded_string = loaded_settings_file.read()
         project_object = json.loads(loaded_string)
 
-    # print(settings_object)
-
     # Calculate Missing Frames
-    # Start the Server
+    frames_left = []
+
+    for frame in range(project_object["Frames Total"]):
+        if not frame+1 in project_object["Frames Complete"]:
+            frames_left.append(frame+1)
+
+    print(frames_left)
 
 
 def help_message():
@@ -123,7 +127,7 @@ def generate_project_id(length: int = 8):
     # choose from all lowercase letter
     letters = string.ascii_letters + string.digits
     result_str = ''.join(random.choice(letters) for i in range(length))
-    #print("Random string of length", length, "is:", result_str)
+    print("Random string of length", length, "is:", result_str)
 
     return result_str
 
@@ -151,12 +155,13 @@ def master():
         elif command_input == "l" or command_input == "load":
             project_input = input("Copy and paste the path to your project: ")
 
-            while not os.path.isfile(project_input):
+            while not os.path.isfile(project_input) and not project_input.endswith(f'.{project_extension}'):
                 print("Please select an exsisting and compatible file")
                 project_input = input(
                     "Copy and paste the path to your project: ")
 
             load_project(project_input)
+            server()
 
         elif command_input == "n" or command_input == "new":
             new_project_object = {}
@@ -254,7 +259,7 @@ def master():
             new_project_object["Frames Complete"] = []
             compute_progress_bar.update(1)
 
-            save_project()
+            save_project(new_project_object)
             compute_progress_bar.update(1)
 
             print("Everything is setup! The rendering process will begin now.")
@@ -273,6 +278,8 @@ def server():
     server_socket.listen()
 
     print("Server started. Waiting for clients...")
+    render_progress_bar = tqdm(
+        range(project_object["Frames Total"]), unit="Frame", unit_divisor=1)
 
     while len(project_object["Frames Complete"]) < project_object["Frames Total"]:
         try:
@@ -283,7 +290,7 @@ def server():
             data_object_from_client = json.loads(data_from_client)
 
             if data_object_from_client["Message"] == "New":
-                # Do sine processing...
+                # Do some processing...
 
                 data_object_to_client = {
                     "Message": "NewR",
@@ -295,7 +302,7 @@ def server():
                     "ARU": 0,
                 }
                 data_to_client = json.dumps(data_object_to_client)
-                server_socket.send(data_to_client.encode())
+                client_connected.send(data_to_client.encode())
 
                 # Blend File
                 data_from_client = client_connected.recv(1024).decode()
@@ -303,43 +310,53 @@ def server():
 
                 if data_object_from_client["Needed"]:
                     with open(project_object[".Blend Full"], "rb") as tcp_upload:
-                        progress_bar = tqdm(range(os.path.getsize(
-                            project_object[".Blend Full"])), f'Uploading {project_object["Project ID"]}', unit="B", unit_scale=True, unit_divisor=1024)
+                        #progress_bar = tqdm(range(os.path.getsize(project_object[".Blend Full"])), f'Uploading {project_object["Project ID"]}', unit="B", unit_scale=True, unit_divisor=1024)
 
                         stream_bytes = tcp_upload.read(1024)
                         while stream_bytes:
-                            server_socket.send(stream_bytes)
-                            progress_bar.update(len(stream_bytes))
+                            client_connected.send(stream_bytes)
+                            # progress_bar.update(len(str(stream_bytes)))
 
                             stream_bytes = tcp_upload.read(1024)
+
+                frames_left.remove(frames_left[0])
 
             elif data_object_from_client["Message"] == "Output":
                 if data_object_from_client["Faulty"]:
                     frames_left.append(data_object_from_client["Frame"])
 
                 else:
-                    server_socket.send("Drop".encode())
+                    client_connected.send("Drop".encode())
 
                     with open(data_object_from_client["Project Frame"], "wb") as tcp_download:
-                        progress_bar = tqdm(range(
-                            data_object_from_client["Output Size"]), f'Downloading {data_object_from_client["Project Frame"]}', unit="B", unit_scale=True, unit_divisor=1024)
+                        #progress_bar = tqdm(range(data_object_from_client["Output Size"]), f'Downloading {data_object_from_client["Project Frame"]}', unit="B", unit_scale=True, unit_divisor=1024)
 
-                        stream_bytes = server_socket.recv(1024)
+                        stream_bytes = client_connected.recv(1024)
                         while stream_bytes:
                             tcp_download.write(stream_bytes)
-                            progress_bar.update(len(stream_bytes))
+                            # progress_bar.update(len(str(stream_bytes)))
 
-                            stream_bytes = server_socket.recv(1024)
+                            stream_bytes = client_connected.recv(1024)
 
-                    tmp = project_object["Frames Complete"]
-                    tmp.append(data_object_from_client["Frame"])
-                    save_project({"Frames Complete": tmp})
+                    try:
+                        with Image.open(data_object_from_client["Project Frame"]) as test_image:
+                            test_image.verify()
+
+                            tmp = project_object["Frames Complete"]
+                            tmp.append(data_object_from_client["Frame"])
+                            save_project({"Frames Complete": tmp})
+
+                            render_progress_bar.update(1)
+                    except:
+                        print("Faulty image detected")
+                        frames_left.append(data_object_from_client["Frame"])
+
         except Exception as e:
             print("an ERROR occoured, continuing anyway")
-            # print(e)
+            print(e)
 
-    server_socket.shutdown()
-    # server_socket.close()
+    # server_socket.shutdown()
+    server_socket.close()
 
     if project_object["Generate Video"]:
         os.environ['PATH'] += ';' + settings_object["FFMPEG Directory"]
@@ -353,78 +370,77 @@ def server():
 
         if project_object["Resize Video"]:
             video_render_stream = ffmpeg.filter(
-                video_render_stream, 'scale', project_object["New Video Width"], project_object["New Video Height"])
+                video_render_stream, 'scale', w=project_object["New Video Width"], h=project_object["New Video Height"])
 
         if project_object["VRC"] == "CBR":
             video_render_stream = ffmpeg.output(
                 video_render_stream, f'{project_object["Project ID"]}.mp4', video_bitrate=project_object["VRC Value"])
-        elif project_object["VRC"] == "CBR":
+        elif project_object["VRC"] == "CRF":
             video_render_stream = ffmpeg.output(
                 video_render_stream, f'{project_object["Project ID"]}.mp4', crf=project_object["VRC Value"])
 
         ffmpeg.run(video_render_stream)
 
-        os.execv()
+        sys.exit()
 
 
 def get_frames(path):
     import struct
 
-    blendfile = open(path, "rb")
-
-    head = blendfile.read(7)
-
-    if head[0:2] == b'\x1f\x8b':  # gzip magic
-        import gzip
-        blendfile.seek(0)
-        blendfile = gzip.open(blendfile, "rb")
+    with open(path, "rb") as blendfile:
         head = blendfile.read(7)
 
-    if head != b'BLENDER':
-        print("not a blend file:", path)
-        blendfile.close()
-        return []
+        if head[0:2] == b'\x1f\x8b':  # gzip magic
+            import gzip
+            blendfile.seek(0)
+            blendfile = gzip.open(blendfile, "rb")
+            head = blendfile.read(7)
 
-    is_64_bit = (blendfile.read(1) == b'-')
+        if head != b'BLENDER':
+            print("not a blend file:", path)
+            blendfile.close()
+            return []
 
-    # true for PPC, false for X86
-    is_big_endian = (blendfile.read(1) == b'V')
+        is_64_bit = (blendfile.read(1) == b'-')
 
-    # Now read the bhead chunk!!!
-    blendfile.read(3)  # skip the version
+        # true for PPC, false for X86
+        is_big_endian = (blendfile.read(1) == b'V')
 
-    scenes = []
+        # Now read the bhead chunk!!!
+        blendfile.read(3)  # skip the version
 
-    sizeof_bhead = 24 if is_64_bit else 20
+        scenes = []
 
-    while blendfile.read(4) == b'REND':
-        sizeof_bhead_left = sizeof_bhead - 4
+        sizeof_bhead = 24 if is_64_bit else 20
 
-        struct.unpack('>i' if is_big_endian else '<i', blendfile.read(4))[0]
-        sizeof_bhead_left -= 4
+        while blendfile.read(4) == b'REND':
+            sizeof_bhead_left = sizeof_bhead - 4
 
-        # We don't care about the rest of the bhead struct
-        blendfile.read(sizeof_bhead_left)
+            struct.unpack('>i' if is_big_endian else '<i',
+                          blendfile.read(4))[0]
+            sizeof_bhead_left -= 4
 
-        # Now we want the scene name, start and end frame. this is 32bites long
-        start_frame, end_frame = struct.unpack(
-            '>2i' if is_big_endian else '<2i', blendfile.read(8))
+            # We don't care about the rest of the bhead struct
+            blendfile.read(sizeof_bhead_left)
 
-        scenes.append(start_frame)
-        scenes.append(end_frame)
+            # Now we want the scene name, start and end frame. this is 32bites long
+            start_frame, end_frame = struct.unpack(
+                '>2i' if is_big_endian else '<2i', blendfile.read(8))
 
-    blendfile.close()
+            scenes.append(start_frame)
+            scenes.append(end_frame)
 
     return scenes
 
 
 if __name__ == "__main__":
-    subprocess.call([sys.executable, "-m", "ensurepip", "--user"])
-    subprocess.call([sys.executable, "-m", "pip",
-                     "install", "--upgrade", "pip"])
-    subprocess.call([sys.executable, "-m", "pip", "install", "ffmpeg-python"])
-    subprocess.call([sys.executable, "-m", "pip", "install", "pillow"])
+    # subprocess.call([sys.executable, "-m", "ensurepip", "--user"])
+    # subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", "pip"])
+    # subprocess.call([sys.executable, "-m", "pip", "install", "ffmpeg-python"])
+    # subprocess.call([sys.executable, "-m", "pip", "install", "pillow"])
+    # subprocess.call([sys.executable, "-m", "pip", "install", "tqdm"])
 
+    load_settings()
     master()
 
     # print(sys.argv)

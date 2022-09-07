@@ -18,13 +18,13 @@ settings_object: dict = {}
 script_directory = os.path.dirname(os.path.abspath(__file__)) + "/"
 
 
-async def setup():
+def setup():
 
     save_settings()
     return
 
 
-async def save_settings(save_object: dict = {}):
+def save_settings(save_object: dict = {}):
     save_object_base = {
         "Master IP": "192.168.178.117",
         "Master Port": 9090,
@@ -60,7 +60,7 @@ async def save_settings(save_object: dict = {}):
         file_to_write.write(json_string)
 
 
-async def load_settings(again: bool = False):
+def load_settings(again: bool = False):
     if os.path.isfile(settings_file):
         global settings_object
 
@@ -77,14 +77,15 @@ async def load_settings(again: bool = False):
 def client():
     global settings_object
 
-    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    #client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     while True:
         # region Connect
         while True:
             try:
                 print("Trying to connect to the server...")
-                #client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                client_socket = socket.socket(
+                    socket.AF_INET, socket.SOCK_STREAM)
                 client_socket.connect(
                     (settings_object["Master IP"], settings_object["Master Port"]))
 
@@ -121,6 +122,8 @@ def client():
             # endregion
 
             # region Aquire Project
+            print(os.path.abspath(
+                f'{data_object_from_server["Project ID"]}.blend'))
             if os.path.isfile(f'{data_object_from_server["Project ID"]}.blend'):
                 data_object_to_server = {"Message": "File", "Needed": False}
                 data_to_server = json.dumps(data_object_to_server)
@@ -154,22 +157,28 @@ def client():
             # endregion
 
             # region Render
-            time_start = time.now()
+            time_start = time.time()
 
             if data_object_from_server["Render Engine"] == "Cycles":
-                subprocess.run(f'"{settings_object["Blender Executable"]}" -b "{settings_object["Working Directory"]}{data_object_from_server["Project ID"]}.blend" -o "{settings_object["Working Directory"]}frame_####" --cycles-device {settings_object["Render Device"]} -f {data_object_from_server["Frame"]}', shell=True)
+                subprocess.run(
+                    f'"{settings_object["Blender Executable"]}" -b "{data_object_from_server["Project ID"]}.blend" -o "{settings_object["Working Directory"]}frame_####" --cycles-device {settings_object["Render Device"]} -f {data_object_from_server["Frame"]}', shell=True)
             else:
                 subprocess.run(
-                    f'"{settings_object["Blender Executable"]}" -b "{settings_object["Working Directory"]}{data_object_from_server["Project ID"]}.blend" -o "{settings_object["Working Directory"]}frame_####" -f {data_object_from_server["Frame"]}', shell=True)
+                    f'"{settings_object["Blender Executable"]}" -b "{data_object_from_server["Project ID"]}.blend" -o "{settings_object["Working Directory"]}frame_####" -f {data_object_from_server["Frame"]}', shell=True)
 
-            render_time = time.now() - time_start
+            render_time = time.time() - time_start
             # endregion
 
             # region Verify
             export_name = "frame_"
-            export_name += "0" * (4 - len(data_object_from_server["Frame"]))
+            export_name += "0" * \
+                (4 - len(str(data_object_from_server["Frame"])))
+            export_name += str(data_object_from_server["Frame"])
             export_name += ".png"
 
+            print(export_name)
+
+            # os.path.abspath(export_name)
             export_full_name = settings_object["Working Directory"] + export_name
 
             data_object_to_server = {"Message": "Output"}
@@ -184,8 +193,9 @@ def client():
                 data_object_to_server["Frame"] = data_object_from_server["Frame"]
                 data_object_to_server["Project Frame"] = export_name
                 data_object_to_server["Render Time"] = render_time
-            except:
+            except Exception as e:
                 print("faulty image detected")
+                print(str(e))
                 data_object_to_server["Faulty"] = True
                 data_object_to_server["Frame"] = data_object_from_server["Frame"]
             # endregion
@@ -194,7 +204,8 @@ def client():
             while True:
                 try:
                     print("Trying to connect to the server...")
-                    #client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    client_socket = socket.socket(
+                        socket.AF_INET, socket.SOCK_STREAM)
                     client_socket.connect(
                         (settings_object["Master IP"], settings_object["Master Port"]))
 
@@ -219,17 +230,17 @@ def client():
                             progress_bar = tqdm(range(
                                 data_object_to_server["Output Size"]), f'Uploading {export_name}', unit="B", unit_scale=True, unit_divisor=1024)
 
-                            stream_bytes = tcp_upload.read(stream_bytes)
+                            stream_bytes = tcp_upload.read(1024)
                             while stream_bytes:
                                 stream_bytes = client_socket.send(stream_bytes)
-                                progress_bar.update(len(stream_bytes))
+                                progress_bar.update(len(str(stream_bytes)))
                                 stream_bytes = tcp_upload.read(1024)
 
                         break
                     except Exception as e:
                         print(
                             f'ERROR while transfering, waiting {settings_object["Transfer Error Hold"]} seconds')
-                        # print(e)
+                        print(e)
                         time.sleep(settings_object["Transfer Error Hold"])
 
             client_socket.close()
@@ -237,7 +248,7 @@ def client():
         except Exception as e:
             print(
                 f'An ERROR occoured, waiting {settings_object["Error Hold"]} seconds')
-            # print(str(e))
+            print(str(e))
             time.sleep(settings_object["Error Hold"])
 
 
@@ -249,5 +260,4 @@ if __name__ == "__main__":
     subprocess.call([sys.executable, "-m", "pip", "install", "tqdm"])
 
     load_settings()
-
     client()
