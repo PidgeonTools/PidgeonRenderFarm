@@ -285,8 +285,7 @@ def server():
     server_socket.listen()
 
     print("Server started. Waiting for clients...")
-    render_progress_bar = tqdm(
-        range(project_object["Frames Total"]), unit="Frame", unit_divisor=1)
+    #render_progress_bar = tqdm(range(project_object["Frames Total"]), unit="Frame", unit_divisor=1)
 
     while len(project_object["Frames Complete"]) < project_object["Frames Total"]:
         try:
@@ -326,6 +325,8 @@ def server():
                             progress_bar.update(len(str(stream_bytes)))
 
                             stream_bytes = tcp_upload.read(1024)
+
+                        client_connected.shutdown()
                 print("upload done")
                 frames_left.remove(frames_left[0])
 
@@ -336,7 +337,7 @@ def server():
                 else:
                     client_connected.send("Drop".encode())
 
-                    with open(data_object_from_client["Project Frame"], "wb") as tcp_download:
+                    with open(os.path.join(settings_object["Working Directory"] + data_object_from_client["Project Frame"]), "wb") as tcp_download:
                         #progress_bar = tqdm(range(data_object_from_client["Output Size"]), f'Downloading {data_object_from_client["Project Frame"]}', unit="B", unit_scale=True, unit_divisor=1024)
 
                         stream_bytes = client_connected.recv(1024)
@@ -347,14 +348,18 @@ def server():
                             stream_bytes = client_connected.recv(1024)
 
                     try:
-                        with Image.open(data_object_from_client["Project Frame"]) as test_image:
+                        with Image.open(os.path.join(settings_object["Working Directory"] + data_object_from_client["Project Frame"])) as test_image:
                             test_image.verify()
 
-                            tmp = project_object["Frames Complete"]
-                            tmp.append(data_object_from_client["Frame"])
-                            save_project({"Frames Complete": tmp})
+                            # tmp = project_object["Frames Complete"]
+                            # tmp.append(data_object_from_client["Frame"])
+                            # save_project({"Frames Complete": tmp})
 
-                            render_progress_bar.update(1)
+                            project_object["Frames Complete"].append(
+                                data_object_from_client["Frame"])
+                            save_project()
+
+                            # render_progress_bar.update(1)
                     except:
                         print("Faulty image detected")
                         frames_left.append(data_object_from_client["Frame"])
