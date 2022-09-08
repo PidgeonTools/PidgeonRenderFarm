@@ -317,12 +317,13 @@ def server():
 
                 if data_object_from_client["Needed"]:
                     with open(project_object[".Blend Full"], "rb") as tcp_upload:
-                        #progress_bar = tqdm(range(os.path.getsize(project_object[".Blend Full"])), f'Uploading {project_object["Project ID"]}', unit="B", unit_scale=True, unit_divisor=1024)
+                        progress_bar = tqdm(range(os.path.getsize(
+                            project_object[".Blend Full"])), f'Uploading {project_object["Project ID"]}', unit="B", unit_scale=True, unit_divisor=1024)
 
                         stream_bytes = tcp_upload.read(1024)
                         while stream_bytes:
                             client_connected.send(stream_bytes)
-                            # progress_bar.update(len(str(stream_bytes)))
+                            progress_bar.update(len(str(stream_bytes)))
 
                             stream_bytes = tcp_upload.read(1024)
                 print("upload done")

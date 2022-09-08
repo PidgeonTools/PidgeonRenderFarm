@@ -221,26 +221,17 @@ def client():
             client_socket.recv(1024).decode()
 
             if not data_object_to_server["Faulty"]:
-                while True:
-                    try:
-                        with open(export_full_name, "rb") as tcp_upload:
-                            progress_bar = tqdm(range(
-                                data_object_to_server["Output Size"]), f'Uploading {export_name}', unit="B", unit_scale=True, unit_divisor=1024)
+                with open(export_full_name, "rb") as tcp_upload:
+                    progress_bar = tqdm(range(
+                        data_object_to_server["Output Size"]), f'Uploading {export_name}', unit="B", unit_scale=True, unit_divisor=1024)
 
-                            stream_bytes = tcp_upload.read(1024)
-                            while stream_bytes:
-                                stream_bytes = client_socket.send(stream_bytes)
-                                progress_bar.update(len(str(stream_bytes)))
-                                stream_bytes = tcp_upload.read(1024)
+                    stream_bytes = tcp_upload.read(1024)
+                    while stream_bytes:
+                        stream_bytes = client_socket.send(stream_bytes)
+                        progress_bar.update(len(str(stream_bytes)))
+                        stream_bytes = tcp_upload.read(1024)
 
-                            progress_bar.clear()
-
-                        break
-                    except Exception as e:
-                        print(
-                            f'ERROR while transfering, waiting {settings_object["Transfer Error Hold"]} seconds')
-                        print(e)
-                        time.sleep(settings_object["Transfer Error Hold"])
+                progress_bar.clear()
 
             client_socket.close()
             # endregion
