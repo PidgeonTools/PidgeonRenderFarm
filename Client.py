@@ -130,7 +130,7 @@ def client():
             # region Aquire Project
             print(os.path.abspath(
                 f'{data_object_from_server["Project ID"]}.blend'))
-            if os.path.isfile(f'{data_object_from_server["Project ID"]}.blend'):
+            if os.path.isfile(f'{data_object_from_server["Project ID"]}.blend') and os.path.getsize(f'{data_object_from_server["Project ID"]}.blend') == data_object_from_server["File Size"]:
                 data_object_to_server = {"Message": "File", "Needed": False}
                 data_to_server = json.dumps(data_object_to_server)
                 client_socket.send(data_to_server.encode())
@@ -139,25 +139,16 @@ def client():
                 data_to_server = json.dumps(data_object_to_server)
                 client_socket.send(data_to_server.encode())
 
-                while True:
-                    try:
-                        with open(f'{data_object_from_server["Project ID"]}.blend', "wb") as tcp_download:
-                            progress_bar = tqdm(range(
-                                data_object_from_server["File Size"]), f'Downloading {data_object_from_server["Project ID"]}', unit="B", unit_scale=True, unit_divisor=1024)
+                with open(f'{data_object_from_server["Project ID"]}.blend', "wb") as tcp_download:
+                    progress_bar = tqdm(range(
+                        data_object_from_server["File Size"]), f'Downloading {data_object_from_server["Project ID"]}', unit="B", unit_scale=True, unit_divisor=1024)
 
-                            stream_bytes = client_socket.recv(1024)
-                            while stream_bytes:
-                                tcp_download.write(stream_bytes)
-                                progress_bar.update(len(stream_bytes))
+                    stream_bytes = client_socket.recv(1024)
+                    while stream_bytes:
+                        tcp_download.write(stream_bytes)
+                        progress_bar.update(len(stream_bytes))
 
-                                stream_bytes = client_socket.recv(1024)
-
-                        break
-                    except Exception as e:
-                        print(
-                            f'ERROR while transfering, waiting {settings_object["Transfer Error Hold"]} seconds')
-                        # print(e)
-                        time.sleep(settings_object["Transfer Error Hold"])
+                        stream_bytes = client_socket.recv(1024)
 
             client_socket.close()
             # endregion
@@ -227,7 +218,7 @@ def client():
             data_to_server = json.dumps(data_object_to_server)
             client_socket.send(data_to_server.encode())
 
-            data_to_drop = client_socket.recv(1024).decode()
+            client_socket.recv(1024).decode()
 
             if not data_object_to_server["Faulty"]:
                 while True:
@@ -241,6 +232,8 @@ def client():
                                 stream_bytes = client_socket.send(stream_bytes)
                                 progress_bar.update(len(str(stream_bytes)))
                                 stream_bytes = tcp_upload.read(1024)
+
+                            progress_bar.clear()
 
                         break
                     except Exception as e:

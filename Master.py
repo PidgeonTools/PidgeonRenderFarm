@@ -325,7 +325,7 @@ def server():
                             # progress_bar.update(len(str(stream_bytes)))
 
                             stream_bytes = tcp_upload.read(1024)
-
+                print("upload done")
                 frames_left.remove(frames_left[0])
 
             elif data_object_from_client["Message"] == "Output":
