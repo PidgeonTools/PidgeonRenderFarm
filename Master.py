@@ -1,14 +1,21 @@
-#import shutil
+from tqdm import tqdm
+import random
+import string
+import json
+import ffmpeg
+from PIL import Image
+import socket
+import os
 import subprocess
 import sys
-import os
-import socket
-from PIL import Image
-import ffmpeg
-import json
-import string
-import random
-from tqdm import tqdm
+
+subprocess.call([sys.executable, "-m", "ensurepip", "--user"])
+subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", "pip"])
+subprocess.call([sys.executable, "-m", "pip", "install", "ffmpeg-python"])
+subprocess.call([sys.executable, "-m", "pip", "install", "pillow"])
+subprocess.call([sys.executable, "-m", "pip", "install", "tqdm"])
+
+#import shutil
 
 #---Master related---#
 master_ip: str = socket.gethostbyname(socket.gethostname())
@@ -434,12 +441,6 @@ def get_frames(path):
 
 
 if __name__ == "__main__":
-    # subprocess.call([sys.executable, "-m", "ensurepip", "--user"])
-    # subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", "pip"])
-    # subprocess.call([sys.executable, "-m", "pip", "install", "ffmpeg-python"])
-    # subprocess.call([sys.executable, "-m", "pip", "install", "pillow"])
-    # subprocess.call([sys.executable, "-m", "pip", "install", "tqdm"])
-
     load_settings()
     master()
 

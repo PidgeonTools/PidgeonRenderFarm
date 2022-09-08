@@ -1,13 +1,19 @@
+from tqdm import tqdm
+from PIL import Image
+import socket
+import time
+import os
 import json
-#import shutil
 import subprocess
 import sys
-import os
-import time
+
+subprocess.call([sys.executable, "-m", "ensurepip", "--user"])
+subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", "pip"])
+subprocess.call([sys.executable, "-m", "pip", "install", "pillow"])
+subprocess.call([sys.executable, "-m", "pip", "install", "tqdm"])
+
+#import shutil
 #from zipfile import ZipFile
-import socket
-from PIL import Image
-from tqdm import tqdm
 
 #---Client related---#
 client_ip = socket.gethostbyname(socket.gethostname())
@@ -253,11 +259,5 @@ def client():
 
 
 if __name__ == "__main__":
-    subprocess.call([sys.executable, "-m", "ensurepip", "--user"])
-    subprocess.call([sys.executable, "-m", "pip",
-                     "install", "--upgrade", "pip"])
-    subprocess.call([sys.executable, "-m", "pip", "install", "pillow"])
-    subprocess.call([sys.executable, "-m", "pip", "install", "tqdm"])
-
     load_settings()
     client()
