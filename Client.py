@@ -1,3 +1,4 @@
+import ipaddress
 from tqdm import tqdm
 from PIL import Image
 import socket
@@ -17,25 +18,133 @@ subprocess.call([sys.executable, "-m", "pip", "install", "tqdm"])
 
 #---Client related---#
 client_ip = socket.gethostbyname(socket.gethostname())
-print(client_ip)
-settings_file = f"client_{client_ip}_settings.json"
+#settings_file = f"client_{client_ip}_settings.json"
+settings_file = f"client_settings.json"
 settings_object: dict = {}
 
 script_directory = os.path.dirname(os.path.abspath(__file__)) + "/"
 
+#---Setup related---#
+valid_settings: dict = {
+    "Render Device": ["CPU", "CUDA", "OPTIX", "HIP", "METAL", "OPENCL", "CUDA+CPU", "OPTIX+CPU", "HIP+CPU", "METAL+CPU", "OPENCL+CPU"],
+}
+
 
 def setup():
+    new_save_object = {}
 
-    save_settings()
-    return
+    user_input = input("What is the IP address of the master?: ")
+    while not validate_ip(user_input):
+        print("Please select a valid ip address (xxx.xxx.xxx.xxx")
+        user_input = input("What is the IP address of the master?: ")
+    new_save_object["Master IP"] = user_input
+
+    user_input = input("What is the port of the master?: ")
+    while True:
+        if user_input.isdigit():
+            if int(user_input) >= 1 and int(user_input) <= 65535:
+                break
+
+        print("Please input a whole number between 1 and 65536")
+        user_input = input("What is the port of the master?: ")
+    new_save_object["Master Port"] = int(user_input)
+
+    user_input = input("Where is your Blender executable stored?: ")
+    while not os.path.isfile(user_input):
+        print("Please select a valid executable")
+        user_input = input("Where is your Blender executable stored?: ")
+    new_save_object["Blender Executable"] = user_input
+
+    user_input = input("Which directory to use as working directory?: ")
+    while not os.path.isdir(user_input):
+        print("Please select a valid directory")
+        user_input = input("Which directory to use as working directory?: ")
+    new_save_object["Working Directory"] = user_input
+
+    user_input = input("Which device to use for rendering?: ")
+    while not user_input.upper() in valid_settings["Render Device"]:
+        print("Please select an valid option (see README.md)")
+        user_input = input("Which Render Engine does your project use?: ")
+    new_save_object["Render Device"] = user_input.upper
+
+    user_input = input("Maximum amount of threads to use (see README.md)?: ")
+    while not user_input.isdigit():
+        print("Please input a whole number")
+        user_input = input(
+            "Maximum amount of threads to use (see README.md)?: ")
+    new_save_object["Thread Limit"] = abs(int(user_input))
+
+    # experimental
+
+    user_input = input("Maximum amount of RAM to use (see README.md)?: ")
+    while not user_input.isdigit():
+        print("Please input a whole number")
+        user_input = input("Maximum amount of RAM to use (see README.md)?: ")
+    new_save_object["RAM Limit"] = abs(int(user_input))
+
+    user_input = input("Maximum project dowload size?: ")
+    while not user_input.isdigit():
+        print("Please input a whole number")
+        user_input = input("Maximum project dowload size?: ")
+    new_save_object["Size Limit"] = abs(int(user_input))
+
+    user_input = input("Maximum time of rendering per frame?: ")
+    while not user_input.isdigit():
+        print("Please input a whole number")
+        user_input = input("Maximum time of rendering per frame?: ")
+    new_save_object["Job Time Limit"] = abs(int(user_input))
+
+    user_input = input("Allow EEVEE rendering on this client?: ")
+    while user_input.capitalize() != "True" and user_input.capitalize() != "Yes" and user_input.capitalize() != "False" and user_input.capitalize() != "No":
+        print("Please select an valid option (see README.md)")
+        user_input = input("Allow EEVEE rendering on this client?: ")
+    new_save_object["Allow EEVEE"] = input_to_bool(user_input)
+
+    user_input = input("Allow Cycles rendering on this client?: ")
+    while user_input.capitalize() != "True" and user_input.capitalize() != "Yes" and user_input.capitalize() != "False" and user_input.capitalize() != "No":
+        print("Please select an valid option (see README.md)")
+        user_input = input("Allow Cycles rendering on this client?: ")
+    new_save_object["Allow Cycles"] = input_to_bool(user_input)
+
+    user_input = input("Allow Workbench rendering on this client?: ")
+    while user_input.capitalize() != "True" and user_input.capitalize() != "Yes" and user_input.capitalize() != "False" and user_input.capitalize() != "No":
+        print("Please select an valid option (see README.md)")
+        user_input = input("Allow Workbench rendering on this client?: ")
+    new_save_object["Allow Workbench"] = input_to_bool(user_input)
+
+    user_input = input("Maximum frames to render?: ")
+    while not user_input.isdigit():
+        print("Please input a whole number")
+        user_input = input("Maximum frames to render?: ")
+    new_save_object["Job Limit"] = abs(int(user_input))
+
+    user_input = input("Maximum time of rendering?: ")
+    while not user_input.isdigit():
+        print("Please input a whole number")
+        user_input = input("Maximum time of rendering?: ")
+    new_save_object["Time Limit"] = abs(int(user_input))
+
+    user_input = input("Keep the rendered and uploaded frames?: ")
+    while user_input.capitalize() != "True" and user_input.capitalize() != "Yes" and user_input.capitalize() != "False" and user_input.capitalize() != "No":
+        print("Please select an valid option (see README.md)")
+        user_input = input("Keep the rendered and uploaded frames?: ")
+    new_save_object["Keep Output"] = input_to_bool(user_input)
+
+    user_input = input(
+        "Keep the project files received from the master? (See README.md): ")
+    while user_input.capitalize() != "True" and user_input.capitalize() != "Yes" and user_input.capitalize() != "False" and user_input.capitalize() != "No":
+        print("Please select an valid option (see README.md)")
+        user_input = input(
+            "Keep the project files received from the master? (See README.md): ")
+    new_save_object["Keep Input"] = input_to_bool(user_input)
+
+    save_settings(new_save_object)
 
 
 def save_settings(save_object: dict = {}):
     save_object_base = {
         "Master IP": "192.168.178.117",
         "Master Port": 9090,
-        "Fallback Master IP": "192.168.178.90",
-        "Fallback Master Port": 9090,
         "Blender Executable": "D:/Program Files (x86)/Steam/steamapps/common/Blender/blender.exe",
         "Working Directory": script_directory,
         # CPU, CUDA, OPTIX, HIP, METAL, (OPENCL) / CUDA+CPU, OPTIX+CPU, HIP+CPU, METAL+CPU, (OPENCL+CPU)
@@ -43,6 +152,7 @@ def save_settings(save_object: dict = {}):
         "Thread Limit": 0,
         "RAM Limit": 0,
         "Size Limit": 0,
+        "Job Time Limit": 0,
         "Allow EEVEE": True,
         "Allow Cycles": True,
         "Allow Workbench": True,
@@ -78,6 +188,24 @@ def load_settings(again: bool = False):
 
     else:
         setup()
+
+# region Functions
+
+
+def input_to_bool(inp: str):
+    if inp.capitalize() == "True" or inp.capitalize() == "Yes":
+        return True
+    elif inp.capitalize() == "False" or inp.capitalize() == "No":
+        return False
+
+
+def validate_ip(address: str = "127.0.0.1"):
+    try:
+        ipaddress.ip_address(address)
+        return True
+    except:
+        return False
+# endregion
 
 
 def client():

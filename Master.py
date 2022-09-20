@@ -1,3 +1,4 @@
+import ipaddress
 from tqdm import tqdm
 import random
 import string
@@ -18,8 +19,8 @@ subprocess.call([sys.executable, "-m", "pip", "install", "tqdm"])
 #import shutil
 
 #---Master related---#
-master_ip: str = socket.gethostbyname(socket.gethostname())
-settings_file: str = f"master_{master_ip}_settings.json"
+#settings_file:str = f"master_{master_ip}_settings.json"
+settings_file: str = f"master_settings.json"
 settings_object: dict = {}
 project_extension: str = "rrfp"
 
@@ -35,19 +36,64 @@ frames_left: list = []
 
 
 def setup():
+    new_save_object = {}
+    new_save_object["Master IP"] = socket.gethostbyname(socket.gethostname())
 
-    save_settings()
+    user_input = input("Which Port to use?: ")
+    while True:
+        if user_input.isdigit():
+            if int(user_input) >= 1 and int(user_input) <= 65535:
+                break
+
+        print("Please input a whole number between 1 and 65536")
+        user_input = input("Which Port to use?: ")
+    new_save_object["Master Port"] = int(user_input)
+
+    user_input = input("What is your FFMPEG directory?: ")
+    while not os.path.isdir(user_input):
+        print("Please select a valid directory (see README.md)")
+        user_input = input("What is your FFMPEG directory?: ")
+    new_save_object["FFMPEG Directory"] = user_input
+
+    user_input = input("Which directory to use as working directory?: ")
+    while not os.path.isdir(user_input):
+        print("Please select a valid directory")
+        user_input = input("Which directory to use as working directory?: ")
+    new_save_object["Working Directory"] = user_input
+
+    user_input = input("Maximum amount of clients?: ")
+    while not user_input.isdigit():
+        print("Please input a whole number")
+        user_input = input("Maximum amount of clients?: ")
+    new_save_object["Worker Limit"] = abs(int(user_input))
+
+    user_input = input("Keep the files received from the clients?: ")
+    while user_input.capitalize() != "True" and user_input.capitalize() != "Yes" and user_input.capitalize() != "False" and user_input.capitalize() != "No":
+        print("Please select an valid option (see README.md)")
+        user_input = input("Keep the files received from the clients?: ")
+    new_save_object["Keep Output"] = input_to_bool(user_input)
+
+    user_input = input("Project ID length?: ")
+    while True:
+        if user_input.isdigit():
+            if int(user_input) >= 1:
+                break
+
+        print("Please input a whole number")
+        user_input = input("Project ID length?: ")
+    new_save_object["Project ID Length"] = abs(int(user_input))
+
+    save_settings(new_save_object)
 
 
 def save_settings(save_object: dict = {}):
     save_object_base = {
-        "Master IP": master_ip,
+        "Master IP": "127.0.0.1",
         "Master Port": 9090,
         "FFMPEG Directory": "D:/Program Files/ffmpeg/bin",
         "Working Directory": script_directory,
-        "Size Limit": 0,
         "Worker Limit": 0,
-        "Keep Input": True,
+        "Keep Output": True,
         "Project ID Length": 8,
     }
 
@@ -120,6 +166,8 @@ def load_project(project_full_file: str):
 
     print(frames_left)
 
+# region Functions
+
 
 def help_message():
     print("##################################################")
@@ -144,6 +192,15 @@ def input_to_bool(inp: str):
         return True
     elif inp.capitalize() == "False" or inp.capitalize() == "No":
         return False
+
+
+def validate_ip(address: str = "127.0.0.1"):
+    try:
+        ipaddress.ip_address(address)
+        return True
+    except:
+        return False
+# endregion
 
 
 def master():
@@ -176,7 +233,6 @@ def master():
                 settings_object["Project ID Length"])
 
             user_input = input("Copy and paste the path to your .blend: ")
-
             while not os.path.isfile(user_input) and not user_input.endswith(".blend"):
                 print("Please select an exsisting and compatible file")
                 user_input = input("Copy and paste the path to your .blend: ")
@@ -184,14 +240,14 @@ def master():
 
             user_input = input("Which Render Engine does your project use?: ")
             while not user_input.lower() in valid_project_settings["Render Engine"]:
-                print("Please select an valid option ('EEVEE', 'Cycles', 'Workbench')")
+                print("Please select an valid option (see README.md)")
                 user_input = input(
                     "Which Render Engine does your project use?: ")
             new_project_object["Render Engine"] = user_input
 
             user_input = input("Generate a video file?: ")
             while user_input.capitalize() != "True" and user_input.capitalize() != "Yes" and user_input.capitalize() != "False" and user_input.capitalize() != "No":
-                print("Please select an valid option ('True', 'Yes', 'False', 'No')")
+                print("Please select an valid option (see README.md)")
                 user_input = input("Generate a video file?: ")
             new_project_object["Generate Video"] = input_to_bool(user_input)
 
@@ -204,7 +260,7 @@ def master():
 
                 user_input = input("Video Rate Control: ")
                 while not user_input.upper() in valid_project_settings["VRC"]:
-                    print("Please input an valid option ('CBR', 'CRF')")
+                    print("Please input an valid option (see README.md)")
                     user_input = input("Video Rate Control: ")
                 new_project_object["VRC"] = user_input.upper()
 
@@ -216,8 +272,7 @@ def master():
 
                 user_input = input("Change the video resolution?: ")
                 while user_input.capitalize() != "True" and user_input.capitalize() != "Yes" and user_input.capitalize() != "False" and user_input.capitalize() != "No":
-                    print(
-                        "Please select an valid option ('True', 'Yes', 'False', 'No')")
+                    print("Please select an valid option (see README.md)")
                     user_input = input("Change the video resolution?: ")
                 new_project_object["Resize Video"] = input_to_bool(user_input)
 
