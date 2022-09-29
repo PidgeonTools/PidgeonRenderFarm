@@ -1,3 +1,4 @@
+import datetime
 import ipaddress
 from tqdm import tqdm
 import random
@@ -20,7 +21,9 @@ subprocess.call([sys.executable, "-m", "pip", "install", "tqdm"])
 
 #---Master related---#
 #settings_file:str = f"master_{master_ip}_settings.json"
+current_date = datetime.datetime.now()
 settings_file: str = f"master_settings.json"
+log_file = f"session_{current_date.year}{current_date.month}{current_date.day}{current_date.hour}{current_date.minute}{current_date.second}.log"
 settings_object: dict = {}
 project_extension: str = "rrfp"
 

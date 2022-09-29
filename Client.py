@@ -2,6 +2,7 @@ import ipaddress
 from tqdm import tqdm
 from PIL import Image
 import socket
+import datetime
 import time
 import os
 import json
@@ -18,8 +19,10 @@ subprocess.call([sys.executable, "-m", "pip", "install", "tqdm"])
 
 #---Client related---#
 client_ip = socket.gethostbyname(socket.gethostname())
+current_date = datetime.datetime.now()
 #settings_file = f"client_{client_ip}_settings.json"
 settings_file = f"client_settings.json"
+log_file = f"session_{current_date.year}{current_date.month}{current_date.day}{current_date.hour}{current_date.minute}{current_date.second}.log"
 settings_object: dict = {}
 
 script_directory = os.path.dirname(os.path.abspath(__file__)) + "/"
@@ -205,6 +208,21 @@ def validate_ip(address: str = "127.0.0.1"):
         return True
     except:
         return False
+
+
+def write_to_log(text: str):
+    with open(os.path.join(settings_object["Working Directory"], log_file), "a") as writeFile:
+        writeFile.write(text + "\n")
+
+
+def show_progress_bar(base, part):
+    tmp = base - part
+    bar = "["
+    bar += "█" * part
+    bar += " " * tmp
+    bar += "]"
+
+    print(bar)
 # endregion
 
 
