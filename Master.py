@@ -1,13 +1,10 @@
 import datetime
-import ipaddress
-from tqdm import tqdm
-import random
-import string
 import json
 import ffmpeg
 from PIL import Image
 import socket
 import os
+import essentials
 import subprocess
 import sys
 
@@ -15,15 +12,15 @@ subprocess.call([sys.executable, "-m", "ensurepip", "--user"])
 subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", "pip"])
 subprocess.call([sys.executable, "-m", "pip", "install", "ffmpeg-python"])
 subprocess.call([sys.executable, "-m", "pip", "install", "pillow"])
-subprocess.call([sys.executable, "-m", "pip", "install", "tqdm"])
 
 #import shutil
+#from zipfile import ZipFile
 
 #---Master related---#
 #settings_file:str = f"master_{master_ip}_settings.json"
 current_date = datetime.datetime.now()
 settings_file: str = f"master_settings.json"
-log_file = f"session_{current_date.year}{current_date.month}{current_date.day}{current_date.hour}{current_date.minute}{current_date.second}.log"
+log_file = f"mSession_{current_date.year}{current_date.month}{current_date.day}{current_date.hour}{current_date.minute}{current_date.second}.log"
 settings_object: dict = {}
 project_extension: str = "rrfp"
 
@@ -71,10 +68,10 @@ def setup():
     new_save_object["Worker Limit"] = abs(int(user_input))
 
     user_input = input("Keep the files received from the clients?: ")
-    while user_input.capitalize() != "True" and user_input.capitalize() != "Yes" and user_input.capitalize() != "False" and user_input.capitalize() != "No":
+    while not essentials.is_bool(user_input):
         print("Please select an valid option (see README.md)")
         user_input = input("Keep the files received from the clients?: ")
-    new_save_object["Keep Output"] = input_to_bool(user_input)
+    new_save_object["Keep Output"] = essentials.input_to_bool(user_input)
 
     user_input = input("Project ID length?: ")
     while True:
@@ -171,38 +168,6 @@ def load_project(project_full_file: str):
 
 # region Functions
 
-
-def help_message():
-    print("##################################################")
-    print("N    -   New project")
-    print("L    -   Load project")
-    print("S    -   Re-Run setup")
-    print("H    -   Show this")
-    print("##################################################")
-
-
-def generate_project_id(length: int = 8):
-    # choose from all lowercase letter
-    letters = string.ascii_letters + string.digits
-    result_str = ''.join(random.choice(letters) for i in range(length))
-    print("Random string of length", length, "is:", result_str)
-
-    return result_str
-
-
-def input_to_bool(inp: str):
-    if inp.capitalize() == "True" or inp.capitalize() == "Yes":
-        return True
-    elif inp.capitalize() == "False" or inp.capitalize() == "No":
-        return False
-
-
-def validate_ip(address: str = "127.0.0.1"):
-    try:
-        ipaddress.ip_address(address)
-        return True
-    except:
-        return False
 # endregion
 
 
@@ -211,13 +176,13 @@ def master():
     global project_object
     global frames_left
 
-    help_message()
+    essentials.help_message()
 
     while True:
         command_input = input("Command: ").lower()
 
         if command_input == "h" or command_input == "help":
-            help_message()
+            essentials.help_message()
 
         elif command_input == "l" or command_input == "load":
             project_input = input("Copy and paste the path to your project: ")
@@ -232,7 +197,7 @@ def master():
 
         elif command_input == "n" or command_input == "new":
             new_project_object = {}
-            new_project_object["Project ID"] = generate_project_id(
+            new_project_object["Project ID"] = essentials.generate_project_id(
                 settings_object["Project ID Length"])
 
             user_input = input("Copy and paste the path to your .blend: ")
@@ -249,10 +214,11 @@ def master():
             new_project_object["Render Engine"] = user_input
 
             user_input = input("Generate a video file?: ")
-            while user_input.capitalize() != "True" and user_input.capitalize() != "Yes" and user_input.capitalize() != "False" and user_input.capitalize() != "No":
+            while not essentials.is_bool(user_input):
                 print("Please select an valid option (see README.md)")
                 user_input = input("Generate a video file?: ")
-            new_project_object["Generate Video"] = input_to_bool(user_input)
+            new_project_object["Generate Video"] = essentials.input_to_bool(
+                user_input)
 
             if new_project_object["Generate Video"]:
                 user_input = input("Video FPS: ")
@@ -274,10 +240,11 @@ def master():
                 new_project_object["VRC Value"] = abs(int(user_input))
 
                 user_input = input("Change the video resolution?: ")
-                while user_input.capitalize() != "True" and user_input.capitalize() != "Yes" and user_input.capitalize() != "False" and user_input.capitalize() != "No":
+                while not essentials.is_bool(user_input):
                     print("Please select an valid option (see README.md)")
                     user_input = input("Change the video resolution?: ")
-                new_project_object["Resize Video"] = input_to_bool(user_input)
+                new_project_object["Resize Video"] = essentials.input_to_bool(
+                    user_input)
 
                 if new_project_object["Resize Video"]:
                     user_input = input("New video width: ")
@@ -296,36 +263,44 @@ def master():
 
             print("The project setup has been completed! The script will now compute all the other required data on it's own.")
 
-            compute_progress_bar = tqdm(
-                range(7), "Computing Required Data", unit="Step", unit_divisor=1)
+            print("Computing Required Data")
+            progress = 0
+            essentials.show_progress_bar(range(7), progress)
 
             start_end_frame = get_frames(new_project_object[".Blend Full"])
-            compute_progress_bar.update(1)
+            progress += 1
+            essentials.show_progress_bar(range(7), progress)
 
             start_frame = start_end_frame[0]
             new_project_object["First Frame"] = start_frame
-            compute_progress_bar.update(1)
+            progress += 1
+            essentials.show_progress_bar(range(7), progress)
 
             end_frame = start_end_frame[1]
             new_project_object["Last Frame"] = end_frame
-            compute_progress_bar.update(1)
+            progress += 1
+            essentials.show_progress_bar(range(7), progress)
 
             frame_count = end_frame - (start_frame - 1)
             new_project_object["Frames Total"] = frame_count
-            compute_progress_bar.update(1)
+            progress += 1
+            essentials.show_progress_bar(range(7), progress)
 
             current_frame = start_frame
 
             while current_frame <= end_frame:
                 frames_left.append(current_frame)
                 current_frame += 1
-            compute_progress_bar.update(1)
+            progress += 1
+            essentials.show_progress_bar(range(7), progress)
 
             new_project_object["Frames Complete"] = []
-            compute_progress_bar.update(1)
+            progress += 1
+            essentials.show_progress_bar(range(7), progress)
 
             save_project(new_project_object)
-            compute_progress_bar.update(1)
+            progress += 1
+            essentials.show_progress_bar(range(7), progress)
 
             print("Everything is setup! The rendering process will begin now.")
 
@@ -374,13 +349,17 @@ def server():
 
                 if data_object_from_client["Needed"]:
                     with open(project_object[".Blend Full"], "rb") as tcp_upload:
-                        progress_bar = tqdm(range(os.path.getsize(
-                            project_object[".Blend Full"])), f'Uploading {project_object["Project ID"]}', unit="B", unit_scale=True, unit_divisor=1024)
+                        progress = 0
+                        essentials.show_progress_bar(
+                            range(data_object_to_client["File Size"]), len(progress))
 
                         stream_bytes = tcp_upload.read(1024)
                         while stream_bytes:
                             client_connected.send(stream_bytes)
-                            progress_bar.update(len(str(stream_bytes)))
+
+                            progress += stream_bytes
+                            essentials.show_progress_bar(
+                                range(data_object_to_client["File Size"]), len(progress))
 
                             stream_bytes = tcp_upload.read(1024)
 

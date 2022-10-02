@@ -1,18 +1,16 @@
-import ipaddress
-from tqdm import tqdm
 from PIL import Image
 import socket
 import datetime
 import time
 import os
 import json
+import essentials
 import subprocess
 import sys
 
 subprocess.call([sys.executable, "-m", "ensurepip", "--user"])
 subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", "pip"])
 subprocess.call([sys.executable, "-m", "pip", "install", "pillow"])
-subprocess.call([sys.executable, "-m", "pip", "install", "tqdm"])
 
 #import shutil
 #from zipfile import ZipFile
@@ -22,7 +20,7 @@ client_ip = socket.gethostbyname(socket.gethostname())
 current_date = datetime.datetime.now()
 #settings_file = f"client_{client_ip}_settings.json"
 settings_file = f"client_settings.json"
-log_file = f"session_{current_date.year}{current_date.month}{current_date.day}{current_date.hour}{current_date.minute}{current_date.second}.log"
+log_file = f"cSession_{current_date.year}{current_date.month}{current_date.day}{current_date.hour}{current_date.minute}{current_date.second}.log"
 settings_object: dict = {}
 
 script_directory = os.path.dirname(os.path.abspath(__file__)) + "/"
@@ -37,7 +35,7 @@ def setup():
     new_save_object = {}
 
     user_input = input("What is the IP address of the master?: ")
-    while not validate_ip(user_input):
+    while not essentials.validate_ip(user_input):
         print("Please select a valid ip address (xxx.xxx.xxx.xxx")
         user_input = input("What is the IP address of the master?: ")
     new_save_object["Master IP"] = user_input
@@ -98,22 +96,22 @@ def setup():
     new_save_object["Job Time Limit"] = abs(int(user_input))
 
     user_input = input("Allow EEVEE rendering on this client?: ")
-    while user_input.capitalize() != "True" and user_input.capitalize() != "Yes" and user_input.capitalize() != "False" and user_input.capitalize() != "No":
+    while not essentials.is_bool(user_input):
         print("Please select an valid option (see README.md)")
         user_input = input("Allow EEVEE rendering on this client?: ")
-    new_save_object["Allow EEVEE"] = input_to_bool(user_input)
+    new_save_object["Allow EEVEE"] = essentials.input_to_bool(user_input)
 
     user_input = input("Allow Cycles rendering on this client?: ")
-    while user_input.capitalize() != "True" and user_input.capitalize() != "Yes" and user_input.capitalize() != "False" and user_input.capitalize() != "No":
+    while not essentials.is_bool(user_input):
         print("Please select an valid option (see README.md)")
         user_input = input("Allow Cycles rendering on this client?: ")
-    new_save_object["Allow Cycles"] = input_to_bool(user_input)
+    new_save_object["Allow Cycles"] = essentials.input_to_bool(user_input)
 
     user_input = input("Allow Workbench rendering on this client?: ")
-    while user_input.capitalize() != "True" and user_input.capitalize() != "Yes" and user_input.capitalize() != "False" and user_input.capitalize() != "No":
+    while not essentials.is_bool(user_input):
         print("Please select an valid option (see README.md)")
         user_input = input("Allow Workbench rendering on this client?: ")
-    new_save_object["Allow Workbench"] = input_to_bool(user_input)
+    new_save_object["Allow Workbench"] = essentials.input_to_bool(user_input)
 
     user_input = input("Maximum frames to render?: ")
     while not user_input.isdigit():
@@ -128,18 +126,18 @@ def setup():
     new_save_object["Time Limit"] = abs(int(user_input))
 
     user_input = input("Keep the rendered and uploaded frames?: ")
-    while user_input.capitalize() != "True" and user_input.capitalize() != "Yes" and user_input.capitalize() != "False" and user_input.capitalize() != "No":
+    while not essentials.is_bool(user_input):
         print("Please select an valid option (see README.md)")
         user_input = input("Keep the rendered and uploaded frames?: ")
-    new_save_object["Keep Output"] = input_to_bool(user_input)
+    new_save_object["Keep Output"] = essentials.input_to_bool(user_input)
 
     user_input = input(
         "Keep the project files received from the master? (See README.md): ")
-    while user_input.capitalize() != "True" and user_input.capitalize() != "Yes" and user_input.capitalize() != "False" and user_input.capitalize() != "No":
+    while not essentials.is_bool(user_input):
         print("Please select an valid option (see README.md)")
         user_input = input(
             "Keep the project files received from the master? (See README.md): ")
-    new_save_object["Keep Input"] = input_to_bool(user_input)
+    new_save_object["Keep Input"] = essentials.input_to_bool(user_input)
 
     save_settings(new_save_object)
 
@@ -195,34 +193,9 @@ def load_settings(again: bool = False):
 # region Functions
 
 
-def input_to_bool(inp: str):
-    if inp.capitalize() == "True" or inp.capitalize() == "Yes":
-        return True
-    elif inp.capitalize() == "False" or inp.capitalize() == "No":
-        return False
-
-
-def validate_ip(address: str = "127.0.0.1"):
-    try:
-        ipaddress.ip_address(address)
-        return True
-    except:
-        return False
-
-
 def write_to_log(text: str):
     with open(os.path.join(settings_object["Working Directory"], log_file), "a") as writeFile:
         writeFile.write(text + "\n")
-
-
-def show_progress_bar(base, part):
-    tmp = base - part
-    bar = "["
-    bar += "█" * part
-    bar += " " * tmp
-    bar += "]"
-
-    print(bar)
 # endregion
 
 
@@ -286,13 +259,17 @@ def client():
                 client_socket.send(data_to_server.encode())
 
                 with open(f'{data_object_from_server["Project ID"]}.blend', "wb") as tcp_download:
-                    progress_bar = tqdm(range(
-                        data_object_from_server["File Size"]), f'Downloading {data_object_from_server["Project ID"]}', unit="B", unit_scale=True, unit_divisor=1024)
+                    progress = 0
+                    essentials.show_progress_bar(
+                        range(data_object_from_server["File Size"]), len(progress))
 
                     stream_bytes = client_socket.recv(1024)
                     while stream_bytes:
                         tcp_download.write(stream_bytes)
-                        progress_bar.update(len(stream_bytes))
+
+                        progress_bar += stream_bytes
+                        essentials.show_progress_bar(
+                            range(data_object_from_server["File Size"]), len(progress))
 
                         stream_bytes = client_socket.recv(1024)
 
@@ -368,13 +345,18 @@ def client():
 
             if not data_object_to_server["Faulty"]:
                 with open(export_full_name, "rb") as tcp_upload:
-                    progress_bar = tqdm(range(
-                        data_object_to_server["Output Size"]), f'Uploading {export_name}', unit="B", unit_scale=True, unit_divisor=1024)
+                    progress = 0
+                    essentials.show_progress_bar(
+                        range(data_object_to_server["Output Size"]), len(progress))
 
                     stream_bytes = tcp_upload.read(1024)
                     while stream_bytes:
                         stream_bytes = client_socket.send(stream_bytes)
-                        progress_bar.update(len(str(stream_bytes)))
+
+                        progress_bar += stream_bytes
+                        essentials.show_progress_bar(
+                            range(data_object_to_server["Output Size"]), len(progress))
+
                         stream_bytes = tcp_upload.read(1024)
 
                 progress_bar.clear()
