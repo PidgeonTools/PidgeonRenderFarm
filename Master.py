@@ -1,3 +1,4 @@
+#import subprocess
 import datetime
 import json
 import ffmpeg
@@ -5,13 +6,12 @@ from PIL import Image
 import socket
 import os
 import essentials
-import subprocess
 import sys
 
-subprocess.call([sys.executable, "-m", "ensurepip", "--user"])
-subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", "pip"])
-subprocess.call([sys.executable, "-m", "pip", "install", "ffmpeg-python"])
-subprocess.call([sys.executable, "-m", "pip", "install", "pillow"])
+# subprocess.call([sys.executable, "-m", "ensurepip", "--user"])
+# subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", "pip"])
+# subprocess.call([sys.executable, "-m", "pip", "install", "ffmpeg-python"])
+# subprocess.call([sys.executable, "-m", "pip", "install", "pillow"])
 
 #import shutil
 #from zipfile import ZipFile

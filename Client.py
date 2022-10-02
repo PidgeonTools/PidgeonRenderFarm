@@ -6,11 +6,11 @@ import os
 import json
 import essentials
 import subprocess
-import sys
+#import sys
 
-subprocess.call([sys.executable, "-m", "ensurepip", "--user"])
-subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", "pip"])
-subprocess.call([sys.executable, "-m", "pip", "install", "pillow"])
+# subprocess.call([sys.executable, "-m", "ensurepip", "--user"])
+# subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", "pip"])
+# subprocess.call([sys.executable, "-m", "pip", "install", "pillow"])
 
 #import shutil
 #from zipfile import ZipFile
