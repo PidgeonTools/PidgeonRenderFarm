@@ -65,27 +65,15 @@ def show_progress_bar(base, part):
 
     factor = math.floor((columns - 6) / base)
 
-    bar = f'{" " * percent_leftover}{percent}%|{"█" * (part * factor)}{" " * (leftover * factor)}|'
+    ending = "\n"
+    if part != base:
+        bar = f'{" " * percent_leftover}{percent}%|{Fore.MAGENTA}{"█" * (part * factor)}{Fore.WHITE}{" " * (leftover * factor)}|'
+        ending = "\r"
+    else:
+        bar = f'{" " * percent_leftover}{percent}%|{Fore.GREEN}{"█" * (part * factor)}{Fore.WHITE}|'
     #" 50%|█████     |"
 
-    print(bar)
-
-
-def show_progress_bar2(base, part):
-    columns, rows = shutil.get_terminal_size()
-
-    leftover = base - part
-    part_leftover = len(str(base)) - len(str(part))
-    percent = round(part / base * 100)
-    percent_leftover = 3 - len(str(percent))
-
-    factor = math.floor((columns - 8 - part_leftover -
-                         len(str(part)) - len(str(base))) / base)
-
-    bar = f'{" " * percent_leftover}{percent}%|{"█" * (part * factor)}{" " * (leftover * factor)}| {"" * part_leftover}{part}/{base}'
-    #" 50%|█████     | 1/2"
-
-    print(bar)
+    print(bar)  # , end=ending)
 
 
 def show_progress_bar3(base, part):
@@ -106,7 +94,30 @@ def show_progress_bar3(base, part):
         bar = f'{" " * percent_leftover}{percent}%|{Fore.GREEN}{"━" * (part * factor)}{Fore.WHITE}|'
     #" 50%|━━━━━     |"
 
-    print(bar, end=ending)
+    print(bar)  # , end=ending)
+
+
+def show_progress_bar4(base, part):
+    columns, rows = shutil.get_terminal_size()
+    init(autoreset=True)
+
+    leftover = base - part
+    percent = round(part / base * 100)
+    percent_leftover = 3 - len(str(percent))
+
+    factor = math.floor((columns - 6) / base)
+
+    ending = "\n"
+    if part == 0:
+        bar = f'{" " * percent_leftover}{percent}%| {" " * (leftover * factor - 1)}|'
+    elif part != base:
+        bar = f'{" " * percent_leftover}{percent}%|{Fore.MAGENTA}{"━" * (part * factor - 1)}{Fore.WHITE} {" " * (leftover * factor)}|'
+        ending = "\r"
+    else:
+        bar = f'{" " * percent_leftover}{percent}%|{Fore.GREEN}{"━" * (part * factor)}{Fore.WHITE}|'
+    #" 50%|━━━━ ━━━━━|"
+
+    print(bar)  # , end=ending)
 
 
 def available_cpu_count():
