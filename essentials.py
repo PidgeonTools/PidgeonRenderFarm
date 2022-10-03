@@ -28,18 +28,25 @@ def generate_project_id(length: int = 8):
     return id
 
 
-def input_to_bool(input: str):
-    if input.lower() in ["true", "yes", "y", "1"]:
-        return True
-    elif input.lower() in ["false", "no", "n", "0"]:
-        return False
+def parse_bool(value: str, default_value=None) -> bool:
+    """Parse user input as boolean value.
+    Return default_value, if the input can't be interpreted as boolean value."""
+    if not value.lower() in ["true", "yes", "y", "1", "false", "no", "n", "0"]:
+        return default_value
 
+    return value.lower() in ["true", "yes", "y", "1"]
 
-def is_bool(input: str):
-    if input.lower() in ["true", "yes", "y", "1", "false", "no", "n", "0"]:
-        return True
+# def input_to_bool(input:str):
+#     if input.lower() in ["true", "yes", "y", "1"]:
+#         return True
+#     elif input.lower() in ["false", "no", "n", "0"]:
+#         return False
 
-    return False
+# def is_bool(input:str):
+#     if input.lower() in ["true", "yes", "y", "1", "false", "no", "n", "0"]:
+#         return True
+
+#     return False
 
 
 def validate_ip(address: str = "127.0.0.1"):

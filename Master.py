@@ -61,11 +61,11 @@ def setup():
         user_input = input("Maximum amount of clients?: ")
     new_save_object["Worker Limit"] = abs(int(user_input))
 
-    user_input = input("Keep the files received from the clients?: ")
-    while not essentials.is_bool(user_input):
-        print("Please select an valid option (see README.md)")
-        user_input = input("Keep the files received from the clients?: ")
-    new_save_object["Keep Output"] = essentials.input_to_bool(user_input)
+    user_input = None
+    while user_input == None:
+        user_input = essentials.parse_bool(
+            input("Keep the files received from the clients? [y/N]: "))
+    new_save_object["Keep Output"] = user_input
 
     user_input = input("Project ID length?: ")
     while True:
@@ -199,12 +199,11 @@ def master():
                 user_input = input("Copy and paste the path to your .blend: ")
             new_project_object[".Blend Full"] = user_input
 
-            user_input = input("Generate a video file?: ")
-            while not essentials.is_bool(user_input):
-                print("Please select an valid option (see README.md)")
-                user_input = input("Generate a video file?: ")
-            new_project_object["Generate Video"] = essentials.input_to_bool(
-                user_input)
+            user_input = None
+            while user_input == None:
+                user_input = essentials.parse_bool(
+                    input("Generate a video file? [y/N]: "))
+            new_project_object["Generate Video"] = user_input
 
             if new_project_object["Generate Video"]:
                 user_input = input("Video FPS: ")
@@ -225,12 +224,11 @@ def master():
                     user_input = input("Video Rate Control Value: ")
                 new_project_object["VRC Value"] = abs(int(user_input))
 
-                user_input = input("Change the video resolution?: ")
-                while not essentials.is_bool(user_input):
-                    print("Please select an valid option (see README.md)")
-                    user_input = input("Change the video resolution?: ")
-                new_project_object["Resize Video"] = essentials.input_to_bool(
-                    user_input)
+                user_input = None
+                while user_input == None:
+                    user_input = essentials.parse_bool(
+                        input("Change the video resolution? [y/N]: "))
+                new_project_object["Resize Video"] = user_input
 
                 if new_project_object["Resize Video"]:
                     user_input = input("New video width: ")

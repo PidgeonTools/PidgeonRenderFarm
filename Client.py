@@ -91,23 +91,23 @@ def setup():
         user_input = input("Maximum time of rendering per frame?: ")
     new_save_object["Job Time Limit"] = abs(int(user_input))
 
-    user_input = input("Allow EEVEE rendering on this client?: ")
-    while not essentials.is_bool(user_input):
-        print("Please select an valid option (see README.md)")
-        user_input = input("Allow EEVEE rendering on this client?: ")
-    new_save_object["Allow EEVEE"] = essentials.input_to_bool(user_input)
+    user_input = None
+    while user_input == None:
+        user_input = essentials.parse_bool(
+            input("Allow EEVEE rendering on this client? [y/N]: "))
+    new_save_object["Allow EEVEE"] = user_input
 
-    user_input = input("Allow Cycles rendering on this client?: ")
-    while not essentials.is_bool(user_input):
-        print("Please select an valid option (see README.md)")
-        user_input = input("Allow Cycles rendering on this client?: ")
-    new_save_object["Allow Cycles"] = essentials.input_to_bool(user_input)
+    user_input = None
+    while user_input == None:
+        user_input = essentials.parse_bool(
+            input("Allow Cycles rendering on this client? [y/N]: "))
+    new_save_object["Allow Cycles"] = user_input
 
-    user_input = input("Allow Workbench rendering on this client?: ")
-    while not essentials.is_bool(user_input):
-        print("Please select an valid option (see README.md)")
-        user_input = input("Allow Workbench rendering on this client?: ")
-    new_save_object["Allow Workbench"] = essentials.input_to_bool(user_input)
+    user_input = None
+    while user_input == None:
+        user_input = essentials.parse_bool(
+            input("Allow Workbench rendering on this client? [y/N]: "))
+    new_save_object["Allow Workbench"] = user_input
 
     user_input = input("Maximum frames to render?: ")
     while not user_input.isdigit():
@@ -121,19 +121,17 @@ def setup():
         user_input = input("Maximum time of rendering?: ")
     new_save_object["Time Limit"] = abs(int(user_input))
 
-    user_input = input("Keep the rendered and uploaded frames?: ")
-    while not essentials.is_bool(user_input):
-        print("Please select an valid option (see README.md)")
-        user_input = input("Keep the rendered and uploaded frames?: ")
-    new_save_object["Keep Output"] = essentials.input_to_bool(user_input)
+    user_input = None
+    while user_input == None:
+        user_input = essentials.parse_bool(
+            input("Keep the rendered and uploaded frames? [y/N]: "))
+    new_save_object["Keep Output"] = user_input
 
-    user_input = input(
-        "Keep the project files received from the master? (See README.md): ")
-    while not essentials.is_bool(user_input):
-        print("Please select an valid option (see README.md)")
-        user_input = input(
-            "Keep the project files received from the master? (See README.md): ")
-    new_save_object["Keep Input"] = essentials.input_to_bool(user_input)
+    user_input = None
+    while user_input == None:
+        user_input = essentials.parse_bool(input(
+            "Keep the project files received from the master? (See README.md) [y/N]: "))
+    new_save_object["Keep Input"] = user_input
 
     save_settings(new_save_object)
 
