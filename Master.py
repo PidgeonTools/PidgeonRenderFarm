@@ -6,6 +6,8 @@ from PIL import Image
 import socket
 import os
 import essentials
+from asyncio import subprocess
+from distutils.command.upload import upload
 import sys
 
 # subprocess.call([sys.executable, "-m", "ensurepip", "--user"])
@@ -27,10 +29,6 @@ project_extension: str = "rrfp"
 script_directory: str = os.path.dirname(os.path.abspath(__file__)) + "/"
 
 #---Project Related---#
-valid_project_settings: dict = {
-    "Render Engine": ["eevee", "cycles", "workbench"],
-    "VRC": ["CBR", "CRF"],
-}
 project_object: dict = {}
 frames_left: list = []
 
@@ -86,6 +84,7 @@ def save_settings(save_object: dict = {}):
     save_object_base = {
         "Master IP": "127.0.0.1",
         "Master Port": 9090,
+        "Blender Executable": "D:/Program Files (x86)/Steam/steamapps/common/Blender/blender.exe",
         "FFMPEG Directory": "D:/Program Files/ffmpeg/bin",
         "Working Directory": script_directory,
         "Worker Limit": 0,
@@ -121,7 +120,8 @@ def save_project(save_object: dict = {}):
     save_object_base = {
         "Project ID": "NAN",
         ".Blend Full": "NAN",
-        "Render Engine": "NAN",  # EEVEE, Cycles, Workbench
+        "Render Engine": "NAN",
+        "File Format": "PNG",
         "Generate Video": True,
         "Video FPS": 30,
         "VRC": "CBR",  # CBR, CRF
@@ -129,6 +129,7 @@ def save_project(save_object: dict = {}):
         "Resize Video": True,
         "New Video Width": 3840,
         "New Video Height": 2160,
+        "Render Time": 0,
         "First Frame": 1,
         "Last Frame": 250,
         "Frames Total": 250,
@@ -161,10 +162,6 @@ def load_project(project_full_file: str):
             frames_left.append(frame+1)
 
     print(frames_left)
-
-# region Functions
-
-# endregion
 
 
 def master():
@@ -202,13 +199,6 @@ def master():
                 user_input = input("Copy and paste the path to your .blend: ")
             new_project_object[".Blend Full"] = user_input
 
-            user_input = input("Which Render Engine does your project use?: ")
-            while not user_input.lower() in valid_project_settings["Render Engine"]:
-                print("Please select an valid option (see README.md)")
-                user_input = input(
-                    "Which Render Engine does your project use?: ")
-            new_project_object["Render Engine"] = user_input
-
             user_input = input("Generate a video file?: ")
             while not essentials.is_bool(user_input):
                 print("Please select an valid option (see README.md)")
@@ -224,7 +214,7 @@ def master():
                 new_project_object["Video FPS"] = abs(int(user_input))
 
                 user_input = input("Video Rate Control: ")
-                while not user_input.upper() in valid_project_settings["VRC"]:
+                while not user_input.upper() in ["CBR", "CRF"]:
                     print("Please input an valid option (see README.md)")
                     user_input = input("Video Rate Control: ")
                 new_project_object["VRC"] = user_input.upper()
@@ -260,7 +250,19 @@ def master():
             print("The project setup has been completed! The script will now compute all the other required data on it's own.")
 
             print("Computing Required Data")
-            combar = essentials.progressbar(7, 0)
+            combar = essentials.progressbar(11, 0)
+
+            subprocess.call([settings_object["Blender Executable"], "-b", "-P",
+                             "BPY.py", "--", f'"{settings_object["Working Directory"]}"'])
+            combar.update(1)
+
+            with open(os.path.join(settings_object["Working Directory"], "vars.json")) as f:
+                varsString = f.read()
+                varsObject = json.loads(varsString)
+                new_project_object["Render Engine"] = varsObject["RE"]
+                new_project_object["Render Time"] = varsObject["RT"]
+                new_project_object["File Format"] = varsObject["FF"]
+            combar.update(3)
 
             start_end_frame = get_frames(new_project_object[".Blend Full"])
             combar.update(1)
@@ -326,9 +328,8 @@ def server():
                     "Project ID": project_object["Project ID"],
                     "Frame": frames_left[0],
                     "Render Engine": project_object["Render Engine"],
+                    "File Format": project_object["File Format"],
                     "File Size": os.path.getsize(project_object[".Blend Full"]),
-                    "ART": 0,
-                    "ARU": 0,
                 }
                 data_to_client = json.dumps(data_object_to_client)
                 client_connected.send(data_to_client.encode())
@@ -373,12 +374,8 @@ def server():
                             stream_bytes = client_connected.recv(1024)
 
                     try:
-                        with Image.open(os.path.join(settings_object["Working Directory"] + data_object_from_client["Project Frame"])) as test_image:
+                        with Image.open(os.path.join(settings_object["Working Directory"], data_object_from_client["Project Frame"])) as test_image:
                             test_image.verify()
-
-                            # tmp = project_object["Frames Complete"]
-                            # tmp.append(data_object_from_client["Frame"])
-                            # save_project({"Frames Complete": tmp})
 
                             project_object["Frames Complete"].append(
                                 data_object_from_client["Frame"])

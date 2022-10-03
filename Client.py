@@ -270,16 +270,25 @@ def client():
             # endregion
 
             # region Render
-            time_start = time.time()
+            command = [
+                settings_object["Blender Executable"],
+                '-b', f'{data_object_from_server["Project ID"]}.blend',
+                '-o', os.path.join(
+                    settings_object["Working Directory"], "frame_"),
+                '-F', data_object_from_server["File Format"]
+            ]
 
             if data_object_from_server["Render Engine"] == "Cycles":
-                subprocess.run(
-                    f'"{settings_object["Blender Executable"]}" -b "{data_object_from_server["Project ID"]}.blend" -o "{settings_object["Working Directory"]}frame_####" --cycles-device {settings_object["Render Device"]} -f {data_object_from_server["Frame"]}', shell=True)
-            else:
-                subprocess.run(
-                    f'"{settings_object["Blender Executable"]}" -b "{data_object_from_server["Project ID"]}.blend" -o "{settings_object["Working Directory"]}frame_####" -f {data_object_from_server["Frame"]}', shell=True)
+                command.append('--cycles-device')
+                command.append(settings_object["Render Device"])
+                # subprocess.run(f'"{settings_object["Blender Executable"]}" -b "{data_object_from_server["Project ID"]}.blend" -o "{settings_object["Working Directory"]}frame_####" --cycles-device {settings_object["Render Device"]} -f {data_object_from_server["Frame"]}', shell=True)
+            # else:
+                # subprocess.run(f'"{settings_object["Blender Executable"]}" -b "{data_object_from_server["Project ID"]}.blend" -o "{settings_object["Working Directory"]}frame_####" -f {data_object_from_server["Frame"]}', shell=True)
 
-            render_time = time.time() - time_start
+            command.append('-f')
+            command.append(data_object_from_server["Frame"])
+
+            subprocess.run(command)
             # endregion
 
             # region Verify
@@ -291,8 +300,8 @@ def client():
 
             print(export_name)
 
-            # os.path.abspath(export_name)
-            export_full_name = settings_object["Working Directory"] + export_name
+            export_full_name = os.path.join(
+                settings_object["Working Directory"], export_name)
 
             data_object_to_server = {"Message": "Output"}
 
@@ -305,7 +314,6 @@ def client():
                     export_full_name)
                 data_object_to_server["Frame"] = data_object_from_server["Frame"]
                 data_object_to_server["Project Frame"] = export_name
-                data_object_to_server["Render Time"] = render_time
             except Exception as e:
                 print("faulty image detected")
                 print(str(e))

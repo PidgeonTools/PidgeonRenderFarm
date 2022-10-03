@@ -29,20 +29,14 @@ def generate_project_id(length: int = 8):
 
 
 def input_to_bool(input: str):
-    if input.lower() == "true" or input.lower() == "yes":
+    if input.lower() in ["true", "yes", "y", "1"]:
         return True
-    elif input.lower() == "false" or input.lower() == "no":
+    elif input.lower() in ["false", "no", "n", "0"]:
         return False
 
 
 def is_bool(input: str):
-    if input.lower() == "true":
-        return True
-    elif input.lower() == "yes":
-        return True
-    elif input.lower() == "false":
-        return True
-    elif input.lower() == "no":
+    if input.lower() in ["true", "yes", "y", "1", "false", "no", "n", "0"]:
         return True
 
     return False
@@ -62,6 +56,11 @@ def is_port(port: str = "9090"):
             return True
 
     return False
+
+
+def write_to_log(path: str, txt: str):
+    with open(path, "a+") as f:
+        f.write(txt)
 
 
 class progressbar:
