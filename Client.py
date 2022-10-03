@@ -41,11 +41,7 @@ def setup():
     new_save_object["Master IP"] = user_input
 
     user_input = input("What is the port of the master?: ")
-    while True:
-        if user_input.isdigit():
-            if int(user_input) >= 1 and int(user_input) <= 65535:
-                break
-
+    while not essentials.is_port(user_input):
         print("Please input a whole number between 1 and 65536")
         user_input = input("What is the port of the master?: ")
     new_save_object["Master Port"] = int(user_input)
@@ -259,17 +255,14 @@ def client():
                 client_socket.send(data_to_server.encode())
 
                 with open(f'{data_object_from_server["Project ID"]}.blend', "wb") as tcp_download:
-                    progress = 0
-                    essentials.show_progress_bar(
-                        range(data_object_from_server["File Size"]), len(progress))
+                    downloadbar = essentials.progressbar(
+                        range(data_object_from_server["File Size"]))
 
                     stream_bytes = client_socket.recv(1024)
                     while stream_bytes:
                         tcp_download.write(stream_bytes)
 
-                        progress_bar += stream_bytes
-                        essentials.show_progress_bar(
-                            range(data_object_from_server["File Size"]), len(progress))
+                        downloadbar.update(len(stream_bytes))
 
                         stream_bytes = client_socket.recv(1024)
 
@@ -345,21 +338,16 @@ def client():
 
             if not data_object_to_server["Faulty"]:
                 with open(export_full_name, "rb") as tcp_upload:
-                    progress = 0
-                    essentials.show_progress_bar(
-                        range(data_object_to_server["Output Size"]), len(progress))
+                    uploadbar = essentials.progressbar(
+                        range(data_object_to_server["Output Size"]))
 
                     stream_bytes = tcp_upload.read(1024)
                     while stream_bytes:
                         stream_bytes = client_socket.send(stream_bytes)
 
-                        progress_bar += stream_bytes
-                        essentials.show_progress_bar(
-                            range(data_object_to_server["Output Size"]), len(progress))
+                        uploadbar.update(len(stream_bytes))
 
                         stream_bytes = tcp_upload.read(1024)
-
-                progress_bar.clear()
 
             client_socket.close()
             # endregion

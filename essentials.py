@@ -56,68 +56,103 @@ def validate_ip(address: str = "127.0.0.1"):
         return False
 
 
-def show_progress_bar(base, part):
-    columns, rows = shutil.get_terminal_size()
+def is_port(port: str = "9090"):
+    if port.isdigit():
+        if int(port) >= 1 and int(port) <= 65535:
+            return True
 
-    leftover = base - part
-    percent = round(part / base * 100)
-    percent_leftover = 3 - len(str(percent))
-
-    factor = math.floor((columns - 6) / base)
-
-    ending = "\n"
-    if part != base:
-        bar = f'{" " * percent_leftover}{percent}%|{Fore.MAGENTA}{"█" * (part * factor)}{Fore.WHITE}{" " * (leftover * factor)}|'
-        ending = "\r"
-    else:
-        bar = f'{" " * percent_leftover}{percent}%|{Fore.GREEN}{"█" * (part * factor)}{Fore.WHITE}|'
-    #" 50%|█████     |"
-
-    print(bar)  # , end=ending)
+    return False
 
 
-def show_progress_bar3(base, part):
-    columns, rows = shutil.get_terminal_size()
-    init(autoreset=True)
+class progressbar:
+    def __init__(self, base, part=0):
+        self.base = base
+        self.part = part
 
-    leftover = base - part
-    percent = round(part / base * 100)
-    percent_leftover = 3 - len(str(percent))
+        self.show_progressbar2()
 
-    factor = math.floor((columns - 6) / base)
+    def update(self, dif):
+        self.part += dif
+        self.show_progressbar2()
 
-    ending = "\n"
-    if part != base:
-        bar = f'{" " * percent_leftover}{percent}%|{Fore.MAGENTA}{"━" * (part * factor)}{Fore.WHITE}{"━" * (leftover * factor)}|'
-        ending = "\r"
-    else:
-        bar = f'{" " * percent_leftover}{percent}%|{Fore.GREEN}{"━" * (part * factor)}{Fore.WHITE}|'
-    #" 50%|━━━━━     |"
+    def show_progressbar0(self):  # " 50%|█████     |"
+        columns, rows = shutil.get_terminal_size()
 
-    print(bar)  # , end=ending)
+        leftover = self.base - self.part
+        percent = round(self.part / self.base * 100)
+        percent_leftover = 3 - len(str(percent))
 
+        factor = math.floor((columns - 6) / self.base)
 
-def show_progress_bar4(base, part):
-    columns, rows = shutil.get_terminal_size()
-    init(autoreset=True)
+        ending = "\n"
+        if self.part != self.base:
+            bar = f'{" " * percent_leftover}{percent}%|{Fore.MAGENTA}{"█" * (self.part * factor)}{Fore.WHITE}{" " * (leftover * factor)}|'
+            ending = "\r"
+        else:
+            bar = f'{" " * percent_leftover}{percent}%|{Fore.GREEN}{"█" * (self.part * factor)}{Fore.WHITE}|'
 
-    leftover = base - part
-    percent = round(part / base * 100)
-    percent_leftover = 3 - len(str(percent))
+        print(bar)  # , end=ending)
 
-    factor = math.floor((columns - 6) / base)
+    def show_progressbar1(self):  # " 50%|━━━━━━━━━━|"
+        columns, rows = shutil.get_terminal_size()
+        init(autoreset=True)
 
-    ending = "\n"
-    if part == 0:
-        bar = f'{" " * percent_leftover}{percent}%| {" " * (leftover * factor - 1)}|'
-    elif part != base:
-        bar = f'{" " * percent_leftover}{percent}%|{Fore.MAGENTA}{"━" * (part * factor - 1)}{Fore.WHITE} {" " * (leftover * factor)}|'
-        ending = "\r"
-    else:
-        bar = f'{" " * percent_leftover}{percent}%|{Fore.GREEN}{"━" * (part * factor)}{Fore.WHITE}|'
-    #" 50%|━━━━ ━━━━━|"
+        leftover = self.base - self.part
+        percent = round(self.part / self.base * 100)
+        percent_leftover = 3 - len(str(percent))
 
-    print(bar)  # , end=ending)
+        factor = math.floor((columns - 6) / self.base)
+
+        ending = "\n"
+        if self.part != self.base:
+            bar = f'{" " * percent_leftover}{percent}%|{Fore.MAGENTA}{"━" * (self.part * factor)}{Fore.WHITE}{"━" * (leftover * factor)}|'
+            ending = "\r"
+        else:
+            bar = f'{" " * percent_leftover}{percent}%|{Fore.GREEN}{"━" * (self.part * factor)}{Fore.WHITE}|'
+
+        print(bar)  # , end=ending)
+
+    def show_progressbar2(self):  # " 50%|━━━━━     |"
+        columns, rows = shutil.get_terminal_size()
+        init(autoreset=True)
+
+        leftover = self.base - self.part
+        percent = round(self.part / self.base * 100)
+        percent_leftover = 3 - len(str(percent))
+
+        factor = math.floor((columns - 6) / self.base)
+
+        ending = "\n"
+        if self.part == 0:
+            bar = f'{" " * percent_leftover}{percent}%| {" " * (leftover * factor - 1)}|'
+        elif self.part != self.base:
+            bar = f'{" " * percent_leftover}{percent}%|{Fore.MAGENTA}{"━" * (self.part * factor)}{Fore.WHITE}{" " * (leftover * factor)}|'
+            ending = "\r"
+        else:
+            bar = f'{" " * percent_leftover}{percent}%|{Fore.GREEN}{"━" * (self.part * factor)}{Fore.WHITE}|'
+
+        print(bar)  # , end=ending)
+
+    def show_progressbar3(self):  # " 50%|━━━━ ━━━━━|"
+        columns, rows = shutil.get_terminal_size()
+        init(autoreset=True)
+
+        leftover = self.base - self.part
+        percent = round(self.part / self.base * 100)
+        percent_leftover = 3 - len(str(percent))
+
+        factor = math.floor((columns - 6) / self.base)
+
+        ending = "\n"
+        if self.part == 0:
+            bar = f'{" " * percent_leftover}{percent}%| {" " * (leftover * factor - 1)}|'
+        elif self.part != self.base:
+            bar = f'{" " * percent_leftover}{percent}%|{Fore.MAGENTA}{"━" * (self.part * factor - 1)}{Fore.WHITE} {"━" * (leftover * factor)}|'
+            ending = "\r"
+        else:
+            bar = f'{" " * percent_leftover}{percent}%|{Fore.GREEN}{"━" * (self.part * factor)}{Fore.WHITE}|'
+
+        print(bar)  # , end=ending)
 
 
 def available_cpu_count():

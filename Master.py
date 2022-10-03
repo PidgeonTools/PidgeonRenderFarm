@@ -40,11 +40,7 @@ def setup():
     new_save_object["Master IP"] = socket.gethostbyname(socket.gethostname())
 
     user_input = input("Which Port to use?: ")
-    while True:
-        if user_input.isdigit():
-            if int(user_input) >= 1 and int(user_input) <= 65535:
-                break
-
+    while not essentials.is_port(user_input):
         print("Please input a whole number between 1 and 65536")
         user_input = input("Which Port to use?: ")
     new_save_object["Master Port"] = int(user_input)
@@ -264,43 +260,35 @@ def master():
             print("The project setup has been completed! The script will now compute all the other required data on it's own.")
 
             print("Computing Required Data")
-            progress = 0
-            essentials.show_progress_bar(range(7), progress)
+            combar = essentials.progressbar(7, 0)
 
             start_end_frame = get_frames(new_project_object[".Blend Full"])
-            progress += 1
-            essentials.show_progress_bar(range(7), progress)
+            combar.update(1)
 
             start_frame = start_end_frame[0]
             new_project_object["First Frame"] = start_frame
-            progress += 1
-            essentials.show_progress_bar(range(7), progress)
+            combar.update(1)
 
             end_frame = start_end_frame[1]
             new_project_object["Last Frame"] = end_frame
-            progress += 1
-            essentials.show_progress_bar(range(7), progress)
+            combar.update(1)
 
             frame_count = end_frame - (start_frame - 1)
             new_project_object["Frames Total"] = frame_count
-            progress += 1
-            essentials.show_progress_bar(range(7), progress)
+            combar.update(1)
 
             current_frame = start_frame
 
             while current_frame <= end_frame:
                 frames_left.append(current_frame)
                 current_frame += 1
-            progress += 1
-            essentials.show_progress_bar(range(7), progress)
+            combar.update(1)
 
             new_project_object["Frames Complete"] = []
-            progress += 1
-            essentials.show_progress_bar(range(7), progress)
+            combar.update(1)
 
             save_project(new_project_object)
-            progress += 1
-            essentials.show_progress_bar(range(7), progress)
+            combar.update(1)
 
             print("Everything is setup! The rendering process will begin now.")
 
@@ -319,6 +307,8 @@ def server():
 
     print("Server started. Waiting for clients...")
     #render_progress_bar = tqdm(range(project_object["Frames Total"]), unit="Frame", unit_divisor=1)
+    renderprogressbar = essentials.progressbar(
+        range(project_object["Frames Total"]))
 
     while len(project_object["Frames Complete"]) < project_object["Frames Total"]:
         try:
@@ -349,17 +339,14 @@ def server():
 
                 if data_object_from_client["Needed"]:
                     with open(project_object[".Blend Full"], "rb") as tcp_upload:
-                        progress = 0
-                        essentials.show_progress_bar(
-                            range(data_object_to_client["File Size"]), len(progress))
+                        uploadbar = essentials.progressbar(
+                            range(data_object_to_client["File Size"]))
 
                         stream_bytes = tcp_upload.read(1024)
                         while stream_bytes:
                             client_connected.send(stream_bytes)
 
-                            progress += stream_bytes
-                            essentials.show_progress_bar(
-                                range(data_object_to_client["File Size"]), len(progress))
+                            uploadbar.update(len(stream_bytes))
 
                             stream_bytes = tcp_upload.read(1024)
 
@@ -375,12 +362,13 @@ def server():
                     client_connected.send("Drop".encode())
 
                     with open(os.path.join(settings_object["Working Directory"] + data_object_from_client["Project Frame"]), "wb") as tcp_download:
-                        #progress_bar = tqdm(range(data_object_from_client["Output Size"]), f'Downloading {data_object_from_client["Project Frame"]}', unit="B", unit_scale=True, unit_divisor=1024)
+                        downloadbar = essentials.progressbar(
+                            range(data_object_from_client["Output Size"]))
 
                         stream_bytes = client_connected.recv(1024)
                         while stream_bytes:
                             tcp_download.write(stream_bytes)
-                            # progress_bar.update(len(str(stream_bytes)))
+                            downloadbar.update(len(stream_bytes))
 
                             stream_bytes = client_connected.recv(1024)
 
@@ -396,7 +384,7 @@ def server():
                                 data_object_from_client["Frame"])
                             save_project()
 
-                            # render_progress_bar.update(1)
+                            renderprogressbar.update(1)
                     except:
                         print("Faulty image detected")
                         frames_left.append(data_object_from_client["Frame"])
