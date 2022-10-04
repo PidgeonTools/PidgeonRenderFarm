@@ -248,10 +248,10 @@ def master():
             print("The project setup has been completed! The script will now compute all the other required data on it's own.")
 
             print("Computing Required Data")
-            combar = essentials.progressbar(11, 0)
+            combar = essentials.progressbar(10, 0)
 
             subprocess.call([settings_object["Blender Executable"], "-b", "-P",
-                             "BPY.py", "--", f'"{settings_object["Working Directory"]}"'])
+                             "BPY.py", "--", f'"{settings_object["Working Directory"]}"' "1"])
             combar.update(1)
 
             with open(os.path.join(settings_object["Working Directory"], "vars.json")) as f:
@@ -260,26 +260,18 @@ def master():
                 new_project_object["Render Engine"] = varsObject["RE"]
                 new_project_object["Render Time"] = varsObject["RT"]
                 new_project_object["File Format"] = varsObject["FF"]
-            combar.update(3)
+                new_project_object["First Frame"] = varsObject["FS"]
+                new_project_object["Last Frame"] = varsObject["FE"]
+            combar.update(5)
 
-            start_end_frame = get_frames(new_project_object[".Blend Full"])
-            combar.update(1)
-
-            start_frame = start_end_frame[0]
-            new_project_object["First Frame"] = start_frame
-            combar.update(1)
-
-            end_frame = start_end_frame[1]
-            new_project_object["Last Frame"] = end_frame
-            combar.update(1)
-
-            frame_count = end_frame - (start_frame - 1)
+            frame_count = new_project_object["Last Frame"] - \
+                (new_project_object["First Frame"] - 1)
             new_project_object["Frames Total"] = frame_count
             combar.update(1)
 
-            current_frame = start_frame
+            current_frame = new_project_object["First Frame"]
 
-            while current_frame <= end_frame:
+            while current_frame <= new_project_object["Last Frame"]:
                 frames_left.append(current_frame)
                 current_frame += 1
             combar.update(1)
