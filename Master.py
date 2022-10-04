@@ -19,14 +19,14 @@ import sys
 #from zipfile import ZipFile
 
 #---Master related---#
-#settings_file:str = f"master_{master_ip}_settings.json"
+#settings_file: str = f"master_{master_ip}_settings.json"
 current_date = datetime.datetime.now()
 settings_file: str = f"master_settings.json"
 log_file = f"mSession_{current_date.year}{current_date.month}{current_date.day}{current_date.hour}{current_date.minute}{current_date.second}.log"
 settings_object: dict = {}
 project_extension: str = "rrfp"
 
-script_directory: str = os.path.dirname(os.path.abspath(__file__)) + "/"
+SCRIPT_DIRECTORY: str = os.path.dirname(os.path.abspath(__file__)) + "/"
 
 #---Project Related---#
 project_object: dict = {}
@@ -64,7 +64,7 @@ def setup():
     user_input = None
     while user_input == None:
         user_input = essentials.parse_bool(
-            input("Keep the files received from the clients? [y/N]: "))
+            input("Keep the files received from the clients? [y/N]: "), True)
     new_save_object["Keep Output"] = user_input
 
     user_input = input("Project ID length?: ")
@@ -86,7 +86,7 @@ def save_settings(save_object: dict = {}):
         "Master Port": 9090,
         "Blender Executable": "D:/Program Files (x86)/Steam/steamapps/common/Blender/blender.exe",
         "FFMPEG Directory": "D:/Program Files/ffmpeg/bin",
-        "Working Directory": script_directory,
+        "Working Directory": SCRIPT_DIRECTORY,
         "Worker Limit": 0,
         "Keep Output": True,
         "Project ID Length": 8,
@@ -96,10 +96,8 @@ def save_settings(save_object: dict = {}):
 
     settings_object = save_object_base | settings_object | save_object
 
-    json_string = json.dumps(settings_object)
-
-    with open(settings_file, "w+") as file_to_write:
-        file_to_write.write(json_string)
+    with open(settings_file, "w+") as f:
+        json.dump(settings_object, f, indent=4)
 
 
 def load_settings(again: bool = False):
@@ -107,8 +105,7 @@ def load_settings(again: bool = False):
         global settings_object
 
         with open(settings_file, "r") as loaded_settings_file:
-            loaded_string = loaded_settings_file.read()
-            settings_object = json.loads(loaded_string)
+            settings_object = json.load(loaded_settings_file)
 
         # print(settings_object)
 
@@ -140,26 +137,23 @@ def save_project(save_object: dict = {}):
 
     project_object = save_object_base | project_object | save_object
 
-    json_string = json.dumps(project_object)
-
-    with open(f'{project_object["Project ID"]}.{project_extension}', "w+") as file_to_write:
-        file_to_write.write(json_string)
+    with open(f'{project_object["Project ID"]}.{project_extension}', "w+") as f:
+        json.dump(project_object, f, indent=4)
 
 
 def load_project(project_full_file: str):
     global project_object
     global frames_left
 
-    with open(project_full_file, "r") as loaded_settings_file:
-        loaded_string = loaded_settings_file.read()
-        project_object = json.loads(loaded_string)
+    with open(project_full_file, "r") as f:
+        project_object = json.load(f)
 
     # Calculate Missing Frames
     frames_left = []
 
     for frame in range(project_object["Frames Total"]):
-        if not frame+1 in project_object["Frames Complete"]:
-            frames_left.append(frame+1)
+        if not frame + 1 in project_object["Frames Complete"]:
+            frames_left.append(frame + 1)
 
     print(frames_left)
 
@@ -169,13 +163,13 @@ def master():
     global project_object
     global frames_left
 
-    essentials.help_message()
+    essentials.print_help_message()
 
     while True:
         command_input = input("Command: ").lower()
 
         if command_input == "h" or command_input == "help":
-            essentials.help_message()
+            essentials.print_help_message()
 
         elif command_input == "l" or command_input == "load":
             project_input = input("Copy and paste the path to your project: ")
@@ -202,7 +196,7 @@ def master():
             user_input = None
             while user_input == None:
                 user_input = essentials.parse_bool(
-                    input("Generate a video file? [y/N]: "))
+                    input("Generate a video file? [y/N]: "), False)
             new_project_object["Generate Video"] = user_input
 
             if new_project_object["Generate Video"]:
@@ -227,7 +221,7 @@ def master():
                 user_input = None
                 while user_input == None:
                     user_input = essentials.parse_bool(
-                        input("Change the video resolution? [y/N]: "))
+                        input("Change the video resolution? [y/N]: "), False)
                 new_project_object["Resize Video"] = user_input
 
                 if new_project_object["Resize Video"]:
@@ -251,17 +245,17 @@ def master():
             combar = essentials.progressbar(10, 0)
 
             subprocess.call([settings_object["Blender Executable"], "-b", "-P",
-                             "BPY.py", "--", f'"{settings_object["Working Directory"]}"' "1"])
+                             "BPY.py", "--", f'"{settings_object["Working Directory"]}"', "1"])
             combar.update(1)
 
             with open(os.path.join(settings_object["Working Directory"], "vars.json")) as f:
-                varsString = f.read()
-                varsObject = json.loads(varsString)
-                new_project_object["Render Engine"] = varsObject["RE"]
-                new_project_object["Render Time"] = varsObject["RT"]
-                new_project_object["File Format"] = varsObject["FF"]
-                new_project_object["First Frame"] = varsObject["FS"]
-                new_project_object["Last Frame"] = varsObject["FE"]
+                vars_string = f.read()
+                vars_object = json.loads(vars_string)
+                new_project_object["Render Engine"] = vars_object["RE"]
+                new_project_object["Render Time"] = vars_object["RT"]
+                new_project_object["File Format"] = vars_object["FF"]
+                new_project_object["First Frame"] = vars_object["FS"]
+                new_project_object["Last Frame"] = vars_object["FE"]
             combar.update(5)
 
             frame_count = new_project_object["Last Frame"] - \
@@ -274,6 +268,7 @@ def master():
             while current_frame <= new_project_object["Last Frame"]:
                 frames_left.append(current_frame)
                 current_frame += 1
+
             combar.update(1)
 
             new_project_object["Frames Complete"] = []
@@ -298,8 +293,8 @@ def server():
     server_socket.listen()
 
     print("Server started. Waiting for clients...")
-    #render_progress_bar = tqdm(range(project_object["Frames Total"]), unit="Frame", unit_divisor=1)
-    renderprogressbar = essentials.progressbar(
+    #render_progressbar = tqdm(range(project_object["Frames Total"]), unit="Frame", unit_divisor=1)
+    render_progressbar = essentials.progressbar(
         range(project_object["Frames Total"]))
 
     while len(project_object["Frames Complete"]) < project_object["Frames Total"]:
@@ -371,7 +366,7 @@ def server():
                                 data_object_from_client["Frame"])
                             save_project()
 
-                            renderprogressbar.update(1)
+                            render_progressbar.update(1)
                     except:
                         print("Faulty image detected")
                         frames_left.append(data_object_from_client["Frame"])

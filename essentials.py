@@ -9,16 +9,18 @@ import os
 import re
 
 
-def help_message():
+def print_help_message():
+    """Show available commands."""
     print("##################################################")
     print("N    -   New project")
     print("L    -   Load project")
     print("S    -   Re-Run setup")
-    print("H    -   Show this")
+    print("H    -   Show this message")
     print("##################################################")
 
 
 def generate_project_id(length: int = 8):
+    """Generate a random ID for a project."""
     letters = string.ascii_letters + string.digits
     id = ""
 
@@ -28,28 +30,21 @@ def generate_project_id(length: int = 8):
     return id
 
 
-def parse_bool(value: str, default_value=None) -> bool:
+def parse_bool(value: str, default: bool = None) -> bool:
     """Parse user input as boolean value.
-    Return default_value, if the input can't be interpreted as boolean value."""
-    if not value.lower() in ["true", "yes", "y", "1", "false", "no", "n", "0"]:
-        return default_value
+    Return default_value or None, if the input can't be interpreted as boolean value."""
+    if value.lower() in ["true", "yes", "y", "1"]:
+        return True
+    elif value.lower() in ["false", "no", "n", "0"]:
+        return False
+    elif value in ["", None]:
+        return default
 
-    return value.lower() in ["true", "yes", "y", "1"]
-
-# def input_to_bool(input:str):
-#     if input.lower() in ["true", "yes", "y", "1"]:
-#         return True
-#     elif input.lower() in ["false", "no", "n", "0"]:
-#         return False
-
-# def is_bool(input:str):
-#     if input.lower() in ["true", "yes", "y", "1", "false", "no", "n", "0"]:
-#         return True
-
-#     return False
+    return None
 
 
 def validate_ip(address: str = "127.0.0.1"):
+    """Validate a given IP adress."""
     try:
         ipaddress.ip_address(address)
         return True
@@ -58,11 +53,11 @@ def validate_ip(address: str = "127.0.0.1"):
 
 
 def is_port(port: str = "9090"):
-    if port.isdigit():
-        if int(port) >= 1 and int(port) <= 65535:
-            return True
+    """Check if a value is a port number."""
+    if not port.isdigit():
+        return False
 
-    return False
+    return int(port) >= 1 and int(port) <= 65535
 
 
 def write_to_log(path: str, txt: str):
@@ -75,13 +70,13 @@ class progressbar:
         self.base = base
         self.part = part
 
-        self.show_progressbar2()
+        self.show_progressbar_variant2()
 
     def update(self, dif):
         self.part += dif
-        self.show_progressbar2()
+        self.show_progressbar_variant2()
 
-    def show_progressbar0(self):  # " 50%|█████     |"
+    def show_progressbar_variant0(self):  # " 50%|█████     |"
         columns, rows = shutil.get_terminal_size()
 
         leftover = self.base - self.part
@@ -99,7 +94,7 @@ class progressbar:
 
         print(bar)  # , end=ending)
 
-    def show_progressbar1(self):  # " 50%|━━━━━━━━━━|"
+    def show_progressbar_variant1(self):  # " 50%|━━━━━━━━━━|"
         columns, rows = shutil.get_terminal_size()
         init(autoreset=True)
 
@@ -118,7 +113,7 @@ class progressbar:
 
         print(bar)  # , end=ending)
 
-    def show_progressbar2(self):  # " 50%|━━━━━     |"
+    def show_progressbar_variant2(self):  # " 50%|━━━━━     |"
         columns, rows = shutil.get_terminal_size()
         init(autoreset=True)
 
@@ -139,7 +134,7 @@ class progressbar:
 
         print(bar)  # , end=ending)
 
-    def show_progressbar3(self):  # " 50%|━━━━ ━━━━━|"
+    def show_progressbar_variant3(self):  # " 50%|━━━━ ━━━━━|"
         columns, rows = shutil.get_terminal_size()
         init(autoreset=True)
 

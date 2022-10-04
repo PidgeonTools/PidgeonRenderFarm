@@ -2,8 +2,9 @@ from PIL import Image
 import socket
 import datetime
 import time
-import os
 import json
+from os import path as p
+import os
 import essentials
 import subprocess
 #import sys
@@ -20,10 +21,12 @@ client_ip = socket.gethostbyname(socket.gethostname())
 current_date = datetime.datetime.now()
 #settings_file = f"client_{client_ip}_settings.json"
 settings_file = f"client_settings.json"
-log_file = f"cSession_{current_date.year}{current_date.month}{current_date.day}{current_date.hour}{current_date.minute}{current_date.second}.log"
+
+log_file = time.strftime("cSession_%Y%m%d%H%M%S", current_date)
+# log_file = f"cSession_{current_date.year}{current_date.month}{current_date.day}{current_date.hour}{current_date.minute}{current_date.second}.log"
 settings_object: dict = {}
 
-script_directory = os.path.dirname(os.path.abspath(__file__)) + "/"
+SCRIPT_DIRECTORY = p.dirname(p.abspath(__file__)) + "/"
 
 #---Setup related---#
 valid_settings: dict = {
@@ -47,13 +50,13 @@ def setup():
     new_save_object["Master Port"] = int(user_input)
 
     user_input = input("Where is your Blender executable stored?: ")
-    while not os.path.isfile(user_input):
+    while not p.isfile(user_input):
         print("Please select a valid executable")
         user_input = input("Where is your Blender executable stored?: ")
     new_save_object["Blender Executable"] = user_input
 
     user_input = input("Which directory to use as working directory?: ")
-    while not os.path.isdir(user_input):
+    while not p.isdir(user_input):
         print("Please select a valid directory")
         user_input = input("Which directory to use as working directory?: ")
     new_save_object["Working Directory"] = user_input
@@ -94,19 +97,19 @@ def setup():
     user_input = None
     while user_input == None:
         user_input = essentials.parse_bool(
-            input("Allow EEVEE rendering on this client? [y/N]: "))
+            input("Allow EEVEE rendering on this client? [y/N]: "), True)
     new_save_object["Allow EEVEE"] = user_input
 
     user_input = None
     while user_input == None:
         user_input = essentials.parse_bool(
-            input("Allow Cycles rendering on this client? [y/N]: "))
+            input("Allow Cycles rendering on this client? [y/N]: "), True)
     new_save_object["Allow Cycles"] = user_input
 
     user_input = None
     while user_input == None:
         user_input = essentials.parse_bool(
-            input("Allow Workbench rendering on this client? [y/N]: "))
+            input("Allow Workbench rendering on this client? [y/N]: "), True)
     new_save_object["Allow Workbench"] = user_input
 
     user_input = input("Maximum frames to render?: ")
@@ -124,13 +127,13 @@ def setup():
     user_input = None
     while user_input == None:
         user_input = essentials.parse_bool(
-            input("Keep the rendered and uploaded frames? [y/N]: "))
+            input("Keep the rendered and uploaded frames? [y/N]: "), True)
     new_save_object["Keep Output"] = user_input
 
     user_input = None
     while user_input == None:
         user_input = essentials.parse_bool(input(
-            "Keep the project files received from the master? (See README.md) [y/N]: "))
+            "Keep the project files received from the master? (See README.md) [y/N]: "), True)
     new_save_object["Keep Input"] = user_input
 
     save_settings(new_save_object)
@@ -141,7 +144,7 @@ def save_settings(save_object: dict = {}):
         "Master IP": "192.168.178.117",
         "Master Port": 9090,
         "Blender Executable": "D:/Program Files (x86)/Steam/steamapps/common/Blender/blender.exe",
-        "Working Directory": script_directory,
+        "Working Directory": SCRIPT_DIRECTORY,
         # CPU, CUDA, OPTIX, HIP, METAL, (OPENCL) / CUDA+CPU, OPTIX+CPU, HIP+CPU, METAL+CPU, (OPENCL+CPU)
         "Render Device": "CPU",
         "Thread Limit": 0,
@@ -165,19 +168,16 @@ def save_settings(save_object: dict = {}):
     global settings_object
     settings_object = save_object_out
 
-    json_string = json.dumps(save_object_out)
-
-    with open(settings_file, "w+") as file_to_write:
-        file_to_write.write(json_string)
+    with open(settings_file, "w+") as f:
+        json.dump(settings_object, f, indent=4)
 
 
 def load_settings(again: bool = False):
-    if os.path.isfile(settings_file):
+    if p.isfile(settings_file):
         global settings_object
 
         with open(settings_file, "r") as loaded_settings_file:
-            loaded_string = loaded_settings_file.read()
-            settings_object = json.loads(loaded_string)
+            settings_object = json.load(loaded_settings_file)
 
         # print(settings_object)
 
@@ -188,8 +188,8 @@ def load_settings(again: bool = False):
 
 
 def write_to_log(text: str):
-    with open(os.path.join(settings_object["Working Directory"], log_file), "a") as writeFile:
-        writeFile.write(text + "\n")
+    with open(p.join(settings_object["Working Directory"], log_file), "a") as write_file:
+        write_file.write(text + "\n")
 # endregion
 
 
@@ -241,9 +241,8 @@ def client():
             # endregion
 
             # region Aquire Project
-            print(os.path.abspath(
-                f'{data_object_from_server["Project ID"]}.blend'))
-            if os.path.isfile(f'{data_object_from_server["Project ID"]}.blend') and os.path.getsize(f'{data_object_from_server["Project ID"]}.blend') == data_object_from_server["File Size"]:
+            print(p.abspath(f'{data_object_from_server["Project ID"]}.blend'))
+            if p.isfile(f'{data_object_from_server["Project ID"]}.blend') and p.getsize(f'{data_object_from_server["Project ID"]}.blend') == data_object_from_server["File Size"]:
                 data_object_to_server = {"Message": "File", "Needed": False}
                 data_to_server = json.dumps(data_object_to_server)
                 client_socket.send(data_to_server.encode())
@@ -271,8 +270,7 @@ def client():
             command = [
                 settings_object["Blender Executable"],
                 '-b', f'{data_object_from_server["Project ID"]}.blend',
-                '-o', os.path.join(
-                    settings_object["Working Directory"], "frame_"),
+                '-o', p.join(settings_object["Working Directory"], "frame_"),
                 '-F', data_object_from_server["File Format"]
             ]
 
@@ -298,7 +296,7 @@ def client():
 
             print(export_name)
 
-            export_full_name = os.path.join(
+            export_full_name = p.join(
                 settings_object["Working Directory"], export_name)
 
             data_object_to_server = {"Message": "Output"}
@@ -308,7 +306,7 @@ def client():
                     test_image.verify()
                     data_object_to_server["Faulty"] = False
 
-                data_object_to_server["Output Size"] = os.path.getsize(
+                data_object_to_server["Output Size"] = p.getsize(
                     export_full_name)
                 data_object_to_server["Frame"] = data_object_from_server["Frame"]
                 data_object_to_server["Project Frame"] = export_name
