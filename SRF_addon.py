@@ -1,10 +1,6 @@
-import time
-import os
-import sys
-import json
+import bpy
 from bpy.types import PropertyGroup, Panel
 from bpy.props import StringProperty, BoolProperty, IntProperty, FloatProperty, EnumProperty
-import bpy
 
 bl_info = {
     "name": "Super Render Farm",
@@ -59,9 +55,39 @@ class properties(PropertyGroup):
     #-----  -----#
 
     render_time_test: BoolProperty(
-        name="Render Time Test",
+        name="Test Render Time",
         description="Render one test frame to approximate the render time per frame",
         default=False
+    )
+
+    file_format: EnumProperty(
+        name="File Format",
+        description="Because you have a video format selected, you now have the option to change that.",
+        items=[
+            ('PNG', "PNG", ""),
+            ('BMP', "BMP", ""),
+            #('AVIJPEG', "AVIJPEG", ""),
+            #('AVIRAW', "AVIRAW", ""),
+            #('IRIZ', "IRIZ", ""),
+            ('IRIS', "Iris", ""),
+            ('JPEG', "JPEG", ""),
+            ('RAWTGA', "Targa RAW", ""),
+            ('TGA', "Targa", ""),
+
+            ('WEBP', "WebP", "Experimental!"),
+            ('JP2', "JPEG 2000", "Experimental!"),
+            #('DDS', "DDS", "Experimental!"),
+            ('DPX', "DPX", "Experimental!"),
+            ('CINEON', "Cineon", "Experimental!"),
+            #('MPEG', "MPEG", "Experimental!"),
+            ('OPEN_EXR_MULTILAYER', "OpenEXR Multilayer", "Experimental!"),
+            ('OPEN_EXR', "OpenEXR", "Experimental!"),
+            ('TIFF', "TIFF", "Experimental!"),
+            ('HDR', "Radiance HDR", "Experimental!"),
+        ],
+
+        #
+        # update=LoadPreset
     )
 
     video: BoolProperty(
@@ -128,13 +154,54 @@ class render_button(bpy.types.Operator):
         return context.active_object is not None
 
     def execute(self, context):
-        overwrite(context)
+        render_srf(context)
         return {'FINISHED'}
 
 
 def render_srf(context):
     scene = context.scene
     props = scene.properties
+
+    import json
+    import sys
+    import os
+    import time
+    import subprocess
+    from subprocess import CREATE_NEW_CONSOLE
+
+    jO = {
+        "VER": bpy.app.version_string,
+        "FS": bpy.context.scene.frame_start,
+        "FE": bpy.context.scene.frame_end,
+        "RE": bpy.context.scene.render.engine,
+        "FF": bpy.context.scene.render.image_settings.file_format,
+        "RT": 0
+    }
+
+    if props.render_time_test:
+        startTime = time.time()
+        bpy.ops.render.render()
+        jO["RT"] = time.time() - startTime
+
+    if jO["FF"] in ["AVI_JPEG", "AVI_RAW", "FFMPEG"]:
+        jO["FF"] = props.file_format
+
+    jO["V"] = props.video
+
+    if jO["V"]:
+        jO["FPS"] = bpy.context.scene.render.fps  # props.fps
+        jO["VRC"] = props.vrc
+        jO["VRCV"] = props.vrc_value
+
+        jO["R"] = props.resize
+
+        if jO["R"]:
+            jO["RESX"] = props.res_x
+            jO["RESY"] = props.res_y
+
+    jS = json.dumps(jO)
+
+    subprocess.call(['ipconfig'], creationflags=CREATE_NEW_CONSOLE)
 
 
 class srf_panel(Panel):
@@ -152,12 +219,16 @@ class srf_panel(Panel):
         row = layout.row()
         row.prop(props, "render_time_test")
 
+        if bpy.context.scene.render.image_settings.file_format in ["AVI_JPEG", "AVI_RAW", "FFMPEG"]:
+            row = layout.row()
+            row.prop(props, "file_format")
+
         row = layout.row()
         row.prop(props, "video")
 
         if props.video:
-            row = layout.row()
-            row.prop(props, "fps")
+            # row = layout.row()
+            # row.prop(props, "fps")
 
             row = layout.row()
             row.prop(props, "vrc")
