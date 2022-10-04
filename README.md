@@ -55,22 +55,22 @@ Here you can see the valid options and explainations for the prompts
 - Maximum RAM to use for rendering
 
 "Allow EEVEE rendering on this client?:"
-- "Yes", "True", "No", "False"
+- "Yes", "True", "Y", "1", "No", "False", "N", "0"
 
 "Allow Cycles rendering on this client?:"
-- "Yes", "True", "No", "False"
+- "Yes", "True", "Y", "1", "No", "False", "N", "0"
 
 "Allow Workbench rendering on this client?:"
-- "Yes", "True", "No", "False"
+- "Yes", "True", "Y", "1", "No", "False", "N", "0"
 
 "Keep the rendered and uploaded frames?:"
 - This gives you the option to save storage by deleting the rendered frame directly after uploading it
-- "Yes", "True", "No", "False"
+- "Yes", "True", "Y", "1", "No", "False", "N", "0"
 
 "Keep the project files received from the master? (See README.md):"
 - This gives you the option to delete the .blend file after every rendered frame
 - Recommended: Yes/True
-- "Yes", "True", "No", "False"
+- "Yes", "True", "Y", "1", "No", "False", "N", "0"
 
 ### Master
 "What is your FFMPEG directory?:"
@@ -79,14 +79,14 @@ Here you can see the valid options and explainations for the prompts
 "Keep the files received from the clients?:"
 - This gives you the option to delete all received frames after generating the video file
 - Recommended: Yes/True
-- "Yes", "True", "No", "False"
+- "Yes", "True", "Y", "1", "No", "False", "N", "0"
 
 "Which Render Engine does your project use?:"
 - "EEVEE", "Cycles", "Workbench"
 
 "Generate a video file?:"
 - This gives you the option to automatically generate a video file using FFMPEG
-- "Yes", "True", "No", "False"
+- "Yes", "True", "Y", "1", "No", "False", "N", "0"
 
 "Video Rate Control:"
 - CBR gives you a stable bitrate, while CRF gives you a stable quality
@@ -95,7 +95,7 @@ Here you can see the valid options and explainations for the prompts
 
 "Change the video resolution?:"
 - This gives you the opton to resize the resolution in the video
-- "Yes", "True", "No", "False"
+- "Yes", "True", "Y", "1", "No", "False", "N", "0"
 
 ## Info
 [Do you have questions? Join the Discord!](https://discord.gg/cnFdGQP)
