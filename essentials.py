@@ -31,8 +31,7 @@ def generate_project_id(length: int = 8):
 
 
 def parse_bool(value: str, default: bool = None) -> bool:
-    """Parse user input as boolean value.
-    Return default_value or None, if the input can't be interpreted as boolean value."""
+    """Parse user input as boolean value."""
     if value.lower() in ["true", "yes", "y", "1"]:
         return True
     elif value.lower() in ["false", "no", "n", "0"]:
