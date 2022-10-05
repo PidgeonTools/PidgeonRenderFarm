@@ -1,10 +1,20 @@
 import bpy
-from bpy.types import PropertyGroup, Panel
-from bpy.props import StringProperty, BoolProperty, IntProperty, FloatProperty, EnumProperty
+from bpy.types import (
+    PropertyGroup,
+    Panel,
+    AddonPreferences
+)
+from bpy.props import (
+    StringProperty,
+    BoolProperty,
+    IntProperty,
+    FloatProperty,
+    EnumProperty
+)
 
 bl_info = {
     "name": "Super Render Farm",
-    "author": "PigeonTools - Crafto 1337",
+    "author": "Crafto 1337, PidgeonTools",
     "version": (0, 1),
     "blender": (2, 93, 0),
     "description": "Setup the render farm directy from Blender without having to start and setting it up manually",
@@ -54,10 +64,18 @@ class properties(PropertyGroup):
 
     #-----  -----#
 
-    render_time_test: BoolProperty(
+    test_render_time: BoolProperty(
         name="Test Render Time",
         description="Render one test frame to approximate the render time per frame",
         default=False
+    )
+
+    render_time: IntProperty(
+        name="Render Time",
+        description="",
+        default=0,
+        min=0,
+        #max = 10
     )
 
     file_format: EnumProperty(
@@ -66,8 +84,6 @@ class properties(PropertyGroup):
         items=[
             ('PNG', "PNG", ""),
             ('BMP', "BMP", ""),
-            #('AVIJPEG', "AVIJPEG", ""),
-            #('AVIRAW', "AVIRAW", ""),
             #('IRIZ', "IRIZ", ""),
             ('IRIS', "Iris", ""),
             ('JPEG', "JPEG", ""),
@@ -79,7 +95,6 @@ class properties(PropertyGroup):
             #('DDS', "DDS", "Experimental!"),
             ('DPX', "DPX", "Experimental!"),
             ('CINEON', "Cineon", "Experimental!"),
-            #('MPEG', "MPEG", "Experimental!"),
             ('OPEN_EXR_MULTILAYER', "OpenEXR Multilayer", "Experimental!"),
             ('OPEN_EXR', "OpenEXR", "Experimental!"),
             ('TIFF', "TIFF", "Experimental!"),
@@ -144,6 +159,12 @@ class properties(PropertyGroup):
         #max = 10
     )
 
+    exit_blender: BoolProperty(
+        name="Exit Blender",
+        description="",
+        default=False
+    )
+
 
 class render_button(bpy.types.Operator):
     bl_idname = "object.render"
@@ -155,6 +176,7 @@ class render_button(bpy.types.Operator):
 
     def execute(self, context):
         render_srf(context)
+
         return {'FINISHED'}
 
 
@@ -175,7 +197,7 @@ def render_srf(context):
         "FE": bpy.context.scene.frame_end,
         "RE": bpy.context.scene.render.engine,
         "FF": bpy.context.scene.render.image_settings.file_format,
-        "RT": 0
+        "RT": props.render_time
     }
 
     if props.render_time_test:
@@ -201,7 +223,11 @@ def render_srf(context):
 
     jS = json.dumps(jO)
 
-    subprocess.call(['ipconfig'], creationflags=CREATE_NEW_CONSOLE)
+    subprocess.call([sys.executable, context.preferences.addons["Super Render Farm"]
+                     .preferences.script_location, "--", jS], creationflags=CREATE_NEW_CONSOLE)
+
+    if props.exit_blender:
+        bpy.ops.wm.quit_blender()
 
 
 class srf_panel(Panel):
@@ -217,7 +243,11 @@ class srf_panel(Panel):
         props = scene.properties
 
         row = layout.row()
-        row.prop(props, "render_time_test")
+        row.prop(props, "test_render_time")
+
+        if not props.test_render_time:
+            row = layout.row()
+            row.prop(props, "render_time")
 
         if bpy.context.scene.render.image_settings.file_format in ["AVI_JPEG", "AVI_RAW", "FFMPEG"]:
             row = layout.row()
@@ -227,8 +257,8 @@ class srf_panel(Panel):
         row.prop(props, "video")
 
         if props.video:
-            # row = layout.row()
-            # row.prop(props, "fps")
+            #row = layout.row()
+            #row.prop(props, "fps")
 
             row = layout.row()
             row.prop(props, "vrc")
@@ -245,24 +275,40 @@ class srf_panel(Panel):
                 #row = layout.row()
                 row.prop(props, "res_y")
 
+            row = layout.row()
+            row.prop(props, "exit_blender")
+
         row = layout.row()
         row = layout.row()
         row = layout.row()
         row.operator("object.render")  # , text="Overwrite")
 
 
+class SRF_APT_Preferences(AddonPreferences):
+    bl_idname = __name__
+
+    script_location: StringProperty(subtype="DIR_PATH")
+
+    def draw(self, context: bpy.types.Context):
+        layout = self.layout
+
+        layout.prop(self, "script_location")
+
+
 def register():
     bpy.utils.register_class(properties)
     bpy.utils.register_class(render_button)
     bpy.utils.register_class(srf_panel)
+    bpy.utils.register_class(SRF_APT_Preferences)
 
     bpy.types.Scene.properties = bpy.props.PointerProperty(type=properties)
 
 
 def unregister():
-    bpy.utils.register_class(properties)
+    bpy.utils.unregister_class(properties)
     bpy.utils.unregister_class(render_button)
     bpy.utils.unregister_class(srf_panel)
+    bpy.utils.unregister_class(SRF_APT_Preferences)
 
     del bpy.types.Scene.properties
 
