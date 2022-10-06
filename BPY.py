@@ -19,10 +19,13 @@ j_o = {
     "RT": 0
 }
 
+if j_o["FF"] in ["AVI_JPEG", "AVI_RAW", "FFMPEG"]:
+    j_o["FF"] = "PNG"
+
 if argv[1] == "1":
-    start_time = time.time()
+    startTime = time.time()
     bpy.ops.render.render()
-    j_o["RT"] = time.time() - start_time
+    j_o["RT"] = time.time() - startTime
 
 j_s = json.dumps(j_o)
 
