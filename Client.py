@@ -17,13 +17,11 @@ import subprocess
 #from zipfile import ZipFile
 
 #---Client related---#
-client_ip = socket.gethostbyname(socket.gethostname())
 current_date = datetime.datetime.now()
 #settings_file = f"client_{client_ip}_settings.json"
 settings_file = f"client_settings.json"
 
 log_file = time.strftime("cSession_%Y%m%d%H%M%S", current_date)
-# log_file = f"cSession_{current_date.year}{current_date.month}{current_date.day}{current_date.hour}{current_date.minute}{current_date.second}.log"
 settings_object: dict = {}
 
 SCRIPT_DIRECTORY = p.dirname(p.abspath(__file__)) + "/"

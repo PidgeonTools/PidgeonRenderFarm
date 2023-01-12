@@ -19,7 +19,7 @@ import sys
 #from zipfile import ZipFile
 
 #---Master related---#
-#settings_file: str = f"master_{master_ip}_settings.json"
+#settings_file: str = f"master_{masterIP}_settings.json"
 current_date = datetime.datetime.now()
 settings_file: str = f"master_settings.json"
 log_file = f"mSession_{current_date.year}{current_date.month}{current_date.day}{current_date.hour}{current_date.minute}{current_date.second}.log"
@@ -126,6 +126,7 @@ def save_project(save_object: dict = {}):
         "Resize Video": True,
         "New Video Width": 3840,
         "New Video Height": 2160,
+        "Chunks": 1,
         "Render Time": 0,
         "First Frame": 1,
         "Last Frame": 250,
@@ -238,6 +239,13 @@ def master():
                         user_input = input("New video heigth: ")
                     new_project_object["New Video Height"] = abs(
                         int(user_input))
+
+            user_input = input(
+                "Chunks (0 for auto. 1 for 1 chunk = 1 frame; EXPERIMENTAL!): ")
+            while not user_input.isdigit():
+                print("Please input a whole number")
+                user_input = input("New video heigth: ")
+            new_project_object["Chunks"] = abs(int(user_input))
 
             print("The project setup has been completed! The script will now compute all the other required data on it's own.")
 
@@ -460,7 +468,7 @@ if __name__ == "__main__":
     # print(sys.argv)
     # try:
     #     arg = sys.argv[1]
-    #     Master(arg)
+    #     master(arg)
     # except:
-    #     Master("No")
+    #     master("No")
     # load_settings(False)
