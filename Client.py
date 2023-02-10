@@ -2,8 +2,9 @@ from PIL import Image
 import socket
 import time
 import json
+from zipfile import ZipFile
 from os import path as p
-import essentials
+import essentials as e
 import subprocess
 #import sys
 
@@ -13,7 +14,6 @@ import subprocess
 
 #import os
 #import shutil
-#from zipfile import ZipFile
 
 #---Client related---#
 #client_ip = socket.gethostbyname(socket.gethostname())
@@ -36,7 +36,7 @@ def setup():
         "Master IP": "192.168.178.117",
         "Master Port": 9090,
         "Blender Executable": "D:/Program Files (x86)/Steam/steamapps/common/Blender/blender.exe",
-        "Working Directory": SCRIPT_DIRECTORY,
+        # "Working Directory": SCRIPT_DIRECTORY,
         # CPU, CUDA, OPTIX, HIP, METAL, (OPENCL) / CUDA+CPU, OPTIX+CPU, HIP+CPU, METAL+CPU, (OPENCL+CPU)
         "Render Device": "CPU",
         "Thread Limit": 0,
@@ -56,13 +56,13 @@ def setup():
     }
 
     user_input = input("What is the IP address of the master?: ")
-    while not essentials.validate_ip(user_input):
+    while not e.validate_ip(user_input):
         print("Please select a valid ip address (xxx.xxx.xxx.xxx")
         user_input = input("What is the IP address of the master?: ")
     new_save_object["Master IP"] = user_input
 
     user_input = input("What is the port of the master?: ")
-    while not essentials.is_port(user_input):
+    while not e.is_port(user_input):
         print("Please input a whole number between 1 and 65536")
         user_input = input("What is the port of the master?: ")
     new_save_object["Master Port"] = int(user_input)
@@ -114,19 +114,19 @@ def setup():
 
     user_input = None
     while user_input == None:
-        user_input = essentials.parse_bool(
+        user_input = e.parse_bool(
             input("Allow EEVEE rendering on this client? [y/N]: "), True)
     new_save_object["Allow EEVEE"] = user_input
 
     user_input = None
     while user_input == None:
-        user_input = essentials.parse_bool(
+        user_input = e.parse_bool(
             input("Allow Cycles rendering on this client? [y/N]: "), True)
     new_save_object["Allow Cycles"] = user_input
 
     user_input = None
     while user_input == None:
-        user_input = essentials.parse_bool(
+        user_input = e.parse_bool(
             input("Allow Workbench rendering on this client? [y/N]: "), True)
     new_save_object["Allow Workbench"] = user_input
 
@@ -144,13 +144,13 @@ def setup():
 
     user_input = None
     while user_input == None:
-        user_input = essentials.parse_bool(
+        user_input = e.parse_bool(
             input("Keep the rendered and uploaded frames? [y/N]: "), True)
     new_save_object["Keep Output"] = user_input
 
     user_input = None
     while user_input == None:
-        user_input = essentials.parse_bool(input(
+        user_input = e.parse_bool(input(
             "Keep the project files received from the master? (See README.md) [y/N]: "), True)
     new_save_object["Keep Input"] = user_input
 
@@ -175,28 +175,73 @@ def load_settings():
         setup()
 
 
+def connect():
+    while True:
+        try:
+            print("Trying to connect to the server...")
+            global settings_object
+
+            cs = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            cs.connect((settings_object["Master IP"],
+                        settings_object["Master Port"]))
+
+            break
+        except Exception as e:
+            print(
+                f'Could not connect to the server, waiting {settings_object["Connection Error Hold"]} seconds')
+            # print(str(e))
+            time.sleep(settings_object["Connection Error Hold"])
+    return cs
+
+
+def validate_image(en: str, efn: str):
+    dots = {"Message": "Output"}
+
+    try:
+        # verify output using PIL
+        with Image.open(efn) as test_image:
+            test_image.verify()
+
+            dots["Faulty"] = False
+
+        dots["Output Size"] = p.getsize(efn)
+        dots["Frame"] = dots["Frame"]
+        dots["Project Frame"] = en
+    except Exception as e:
+        print("faulty image detected")
+        print(str(e))
+        dots["Faulty"] = True
+        dots["Frame"] = dots["Frame"]
+    return dots
+
+
+def validate_images(images: list):
+    dots = {"Message": "Output"}
+
+    for image in images:
+        try:
+            # verify output using PIL
+            with Image.open(efn) as test_image:
+                test_image.verify()
+
+                dots["Faulty"] = False
+
+            dots["Output Size"] = p.getsize(efn)
+            dots["Frame"] = dots["Frame"]
+            dots["Project Frame"] = en
+        except Exception as e:
+            print("faulty image detected")
+            print(str(e))
+            dots["Faulty"] = True
+            dots["Frame"] = dots["Frame"]
+    return dots
+
+
 def client():
     global settings_object
 
-    #client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
     while True:
-        # region Connect
-        while True:
-            try:
-                print("Trying to connect to the server...")
-                client_socket = socket.socket(
-                    socket.AF_INET, socket.SOCK_STREAM)
-                client_socket.connect(
-                    (settings_object["Master IP"], settings_object["Master Port"]))
-
-                break
-            except Exception as e:
-                print(
-                    f'Could not connect to the server, waiting {settings_object["Connection Error Hold"]} seconds')
-                # print(str(e))
-                time.sleep(settings_object["Connection Error Hold"])
-        # endregion
+        client_socket = connect()
 
         try:
             # region Server Request
@@ -204,6 +249,7 @@ def client():
                 "Message": "New",
                 "RAM Limit": settings_object["RAM Limit"],
                 "Size Limit": settings_object["Size Limit"],
+                # Outdated
                 "Allow EEVEE": settings_object["Allow EEVEE"],
                 "Allow Cycles": settings_object["Allow Cycles"],
                 "Allow Workbench": settings_object["Allow Workbench"],
@@ -216,27 +262,35 @@ def client():
             data_from_server = client_socket.recv(1024).decode()
             data_object_from_server = json.loads(data_from_server)
             # Data structure:
-            # Message, project id, frame, engine, file size, (average render time, average ram use)
+            # Message, Project ID, Frame, Render Engine, File Size, (average render time, average ram use)
 
-            print(
-                f'Project ID: {data_object_from_server["Project ID"]}; Frame: {data_object_from_server["Frame"]}; Render Engine: {data_object_from_server["Render Engine"]}')
+            print(f'Project ID: {data_object_from_server["Project ID"]}')
+            print(f'Frame: {data_object_from_server["Frame"]}')
+            print(f'Render Engine: {data_object_from_server["Render Engine"]}')
             # endregion
 
             # region Aquire Project
-            print(p.abspath(f'{data_object_from_server["Project ID"]}.blend'))
+            #print(p.abspath(f'{data_object_from_server["Project ID"]}.blend'))
+
+            # Make sure we have the correct file by checking if we have a file and if it has the same size as on the server side
             if p.isfile(f'{data_object_from_server["Project ID"]}.blend') and p.getsize(f'{data_object_from_server["Project ID"]}.blend') == data_object_from_server["File Size"]:
+                # If we have it, tell the server there is no need
                 data_object_to_server = {"Message": "File", "Needed": False}
                 data_to_server = json.dumps(data_object_to_server)
                 client_socket.send(data_to_server.encode())
             else:
+                # Else tell the server we still need it
                 data_object_to_server = {"Message": "File", "Needed": True}
                 data_to_server = json.dumps(data_object_to_server)
                 client_socket.send(data_to_server.encode())
 
+                # Create a new file
                 with open(f'{data_object_from_server["Project ID"]}.blend', "wb") as tcp_download:
-                    downloadbar = essentials.progressbar(
+                    downloadbar = e.progressbar(
                         range(data_object_from_server["File Size"]))
 
+                    # Download file over TCP
+                    # Receive data and write to file until there is no more data
                     stream_bytes = client_socket.recv(1024)
                     while stream_bytes:
                         tcp_download.write(stream_bytes)
@@ -245,6 +299,7 @@ def client():
 
                         stream_bytes = client_socket.recv(1024)
 
+            # Cut the connection
             client_socket.close()
             # endregion
 
@@ -259,8 +314,8 @@ def client():
             command.append(f'{data_object_from_server["Project ID"]}.blend')
             # append output directory and name
             command.append('-o')
-            command.append(
-                p.join(settings_object["Working Directory"], "frame_####"))
+            # command.append(p.join(settings_object["Working Directory"], "frame_####"))
+            command.append(p.join(SCRIPT_DIRECTORY, "frame_####"))
             # append output file format
             command.append('-F')
             command.append(data_object_from_server["File Format"])
@@ -281,60 +336,16 @@ def client():
 
             # endregion
 
-            # region Verify
+            # region Verify and Compress
+            zip_name = str(data_object_from_server["Frame"]) + "-" + str(
+                data_object_from_server["Frame"] + (data_object_from_server["Chunks"] - 1)) + ".zip"
+            with ZipFile(zip_name, 'w') as zip_object:
+                zip_object.write("l")
 
-            # generate expected file name
-            export_name = "frame_"
-            export_name += "0" * \
-                (4 - len(str(data_object_from_server["Frame"])))
-            export_name += str(data_object_from_server["Frame"])
-            export_name += ".png"
-            export_full_name = p.join(
-                settings_object["Working Directory"], export_name)
-
-            # print(export_name)
-
-            data_object_to_server = {"Message": "Output"}
-
-            try:
-                # verify output using PIL
-                with Image.open(export_full_name) as test_image:
-                    test_image.verify()
-                    data_object_to_server["Faulty"] = False
-
-                data_object_to_server["Output Size"] = p.getsize(
-                    export_full_name)
-                data_object_to_server["Frame"] = data_object_from_server["Frame"]
-                data_object_to_server["Project Frame"] = export_name
-            except Exception as e:
-                print("faulty image detected")
-                print(str(e))
-                data_object_to_server["Faulty"] = True
-                data_object_to_server["Frame"] = data_object_from_server["Frame"]
-
+            zip_full_name = p.join(SCRIPT_DIRECTORY, zip_name)
             # endregion
 
-            # region Connect
-
-            # try to connect to the master until connection established
-            while True:
-                try:
-                    print("Trying to connect to the server...")
-                    client_socket = socket.socket(
-                        socket.AF_INET, socket.SOCK_STREAM)
-                    client_socket.connect(
-                        (settings_object["Master IP"], settings_object["Master Port"]))
-
-                    break
-                except Exception as e:
-                    print(
-                        f'Could not connect to the server, waiting {settings_object["Connection Error Hold"]} seconds')
-                    # print(str(e))
-                    time.sleep(settings_object["Connection Error Hold"])
-
-            # endregion
-
-            # region Upload Output
+            client_socket = connect()
 
             data_to_server = json.dumps(data_object_to_server)
             client_socket.send(data_to_server.encode())
@@ -344,8 +355,8 @@ def client():
 
             # if output verified, send it to the server
             if not data_object_to_server["Faulty"]:
-                with open(export_full_name, "rb") as tcp_upload:
-                    uploadbar = essentials.progressbar(
+                with open(zip_full_name, "rb") as tcp_upload:
+                    uploadbar = e.progressbar(
                         range(data_object_to_server["Output Size"]))
 
                     stream_bytes = tcp_upload.read(1024)
@@ -358,7 +369,46 @@ def client():
 
             client_socket.close()
 
-            # endregion
+            # # #region Verify
+            # # # generate expected file name
+            # # export_name = "frame_"
+            # # export_name += "0" * (4 - len(str(data_object_from_server["Frame"])))
+            # # export_name += str(data_object_from_server["Frame"])
+            # # export_name += "." + data_object_from_server["File Format"]
+            # # #export_full_name = p.join(settings_object["Working Directory"], export_name)
+            # # export_full_name = p.join(SCRIPT_DIRECTORY, export_name)
+
+            # # #print(export_name)
+
+            # # data_object_to_server = validate_image(export_name, export_full_name)
+            # # #endregion
+
+            # # client_socket = connect()
+
+            # # #region Upload Output
+            # # data_to_server = json.dumps(data_object_to_server)
+            # # client_socket.send(data_to_server.encode())
+
+            # # # drop stream from master -> synced
+            # # client_socket.recv(1024).decode()
+
+            # # # if output verified, send it to the server
+            # # if not data_object_to_server["Faulty"]:
+            # #     with open(export_full_name, "rb") as tcp_upload:
+            # #         uploadbar = e.progressbar(range(data_object_to_server["Output Size"]))
+
+            # #         stream_bytes = tcp_upload.read(1024)
+            # #         while stream_bytes:
+            # #             stream_bytes = client_socket.send(stream_bytes)
+
+            # #             uploadbar.update(len(stream_bytes))
+
+            # #             stream_bytes = tcp_upload.read(1024)
+
+            # # client_socket.close()
+
+            # # #endregion
+
         except Exception as e:
             print(
                 f'An ERROR occoured, waiting {settings_object["Error Hold"]} seconds')

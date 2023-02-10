@@ -7,6 +7,7 @@ from colorama import init, Fore, Back, Style
 import subprocess
 import os
 import re
+import time
 
 
 def print_help_message():
@@ -61,7 +62,7 @@ def is_port(port: str = "9090"):
 
 def write_to_log(path: str, txt: str):
     with open(path, "a+") as f:
-        f.write(txt)
+        f.write(time.strftime("%Y/%m/%d/%H:%M:%S:    ") + txt)
 
 
 class progressbar:
