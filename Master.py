@@ -1,13 +1,12 @@
-#import subprocess
-import datetime
+import time
 import json
 import ffmpeg
 from PIL import Image
 import socket
+from os import path as p
 import os
 import essentials
-from asyncio import subprocess
-from distutils.command.upload import upload
+import subprocess
 import sys
 
 # subprocess.call([sys.executable, "-m", "ensurepip", "--user"])
@@ -19,14 +18,15 @@ import sys
 #from zipfile import ZipFile
 
 #---Master related---#
-#settings_file: str = f"master_{masterIP}_settings.json"
-current_date = datetime.datetime.now()
+#master_ip = socket.gethostbyname(socket.gethostname())
+#settings_file: str = f"master_{master_ip}_settings.json"
 settings_file: str = f"master_settings.json"
-log_file = f"mSession_{current_date.year}{current_date.month}{current_date.day}{current_date.hour}{current_date.minute}{current_date.second}.log"
+log_file = time.strftime("mSession_%Y%m%d%H%M%S.log")
+
 settings_object: dict = {}
 project_extension: str = "rrfp"
 
-SCRIPT_DIRECTORY: str = os.path.dirname(os.path.abspath(__file__)) + "/"
+SCRIPT_DIRECTORY: str = p.dirname(p.abspath(__file__)) + "/"
 
 #---Project Related---#
 project_object: dict = {}
@@ -34,7 +34,17 @@ frames_left: list = []
 
 
 def setup():
-    new_save_object = {}
+    new_save_object = {
+        "Master IP": "127.0.0.1",
+        "Master Port": 9090,
+        "Blender Executable": "D:/Program Files (x86)/Steam/steamapps/common/Blender/blender.exe",
+        "FFMPEG Directory": "D:/Program Files/ffmpeg/bin",
+        "Working Directory": SCRIPT_DIRECTORY,
+        "Worker Limit": 0,
+        "Keep Output": True,
+        "Project ID Length": 8,
+    }
+
     new_save_object["Master IP"] = socket.gethostbyname(socket.gethostname())
 
     user_input = input("Which Port to use?: ")
@@ -44,13 +54,13 @@ def setup():
     new_save_object["Master Port"] = int(user_input)
 
     user_input = input("What is your FFMPEG directory?: ")
-    while not os.path.isdir(user_input):
+    while not p.isdir(user_input):
         print("Please select a valid directory (see README.md)")
         user_input = input("What is your FFMPEG directory?: ")
     new_save_object["FFMPEG Directory"] = user_input
 
     user_input = input("Which directory to use as working directory?: ")
-    while not os.path.isdir(user_input):
+    while not p.isdir(user_input):
         print("Please select a valid directory")
         user_input = input("Which directory to use as working directory?: ")
     new_save_object["Working Directory"] = user_input
@@ -80,36 +90,21 @@ def setup():
     save_settings(new_save_object)
 
 
-def save_settings(save_object: dict = {}):
-    save_object_base = {
-        "Master IP": "127.0.0.1",
-        "Master Port": 9090,
-        "Blender Executable": "D:/Program Files (x86)/Steam/steamapps/common/Blender/blender.exe",
-        "FFMPEG Directory": "D:/Program Files/ffmpeg/bin",
-        "Working Directory": SCRIPT_DIRECTORY,
-        "Worker Limit": 0,
-        "Keep Output": True,
-        "Project ID Length": 8,
-    }
-
+def save_settings(save_object: dict):
     global settings_object
-
-    settings_object = save_object_base | settings_object | save_object
+    settings_object = save_object
 
     with open(settings_file, "w+") as f:
         json.dump(settings_object, f, indent=4)
 
 
 def load_settings(again: bool = False):
-    if os.path.isfile(settings_file):
+    try:
         global settings_object
 
         with open(settings_file, "r") as loaded_settings_file:
             settings_object = json.load(loaded_settings_file)
-
-        # print(settings_object)
-
-    else:
+    except Exception as e:
         setup()
 
 
@@ -175,7 +170,7 @@ def master():
         elif command_input == "l" or command_input == "load":
             project_input = input("Copy and paste the path to your project: ")
 
-            while not os.path.isfile(project_input) and not project_input.endswith(f'.{project_extension}'):
+            while not p.isfile(project_input) and not project_input.endswith(f'.{project_extension}'):
                 print("Please select an exsisting and compatible file")
                 project_input = input(
                     "Copy and paste the path to your project: ")
@@ -189,7 +184,7 @@ def master():
                 settings_object["Project ID Length"])
 
             user_input = input("Copy and paste the path to your .blend: ")
-            while not os.path.isfile(user_input) and not user_input.endswith(".blend"):
+            while not p.isfile(user_input) and not user_input.endswith(".blend"):
                 print("Please select an exsisting and compatible file")
                 user_input = input("Copy and paste the path to your .blend: ")
             new_project_object[".Blend Full"] = user_input
@@ -256,7 +251,7 @@ def master():
                              "BPY.py", "--", f'"{settings_object["Working Directory"]}"', "1"])
             combar.update(1)
 
-            with open(os.path.join(settings_object["Working Directory"], "vars.json")) as f:
+            with open(p.join(settings_object["Working Directory"], "vars.json")) as f:
                 vars_string = f.read()
                 vars_object = json.loads(vars_string)
                 new_project_object["Render Engine"] = vars_object["RE"]
@@ -322,7 +317,7 @@ def server():
                     "Frame": frames_left[0],
                     "Render Engine": project_object["Render Engine"],
                     "File Format": project_object["File Format"],
-                    "File Size": os.path.getsize(project_object[".Blend Full"]),
+                    "File Size": p.getsize(project_object[".Blend Full"]),
                 }
                 data_to_client = json.dumps(data_object_to_client)
                 client_connected.send(data_to_client.encode())
@@ -355,7 +350,7 @@ def server():
                 else:
                     client_connected.send("Drop".encode())
 
-                    with open(os.path.join(settings_object["Working Directory"] + data_object_from_client["Project Frame"]), "wb") as tcp_download:
+                    with open(p.join(settings_object["Working Directory"] + data_object_from_client["Project Frame"]), "wb") as tcp_download:
                         downloadbar = essentials.progressbar(
                             range(data_object_from_client["Output Size"]))
 
@@ -367,7 +362,7 @@ def server():
                             stream_bytes = client_connected.recv(1024)
 
                     try:
-                        with Image.open(os.path.join(settings_object["Working Directory"], data_object_from_client["Project Frame"])) as test_image:
+                        with Image.open(p.join(settings_object["Working Directory"], data_object_from_client["Project Frame"])) as test_image:
                             test_image.verify()
 
                             project_object["Frames Complete"].append(
@@ -389,7 +384,7 @@ def server():
     if project_object["Generate Video"]:
         os.environ['PATH'] += ';' + settings_object["FFMPEG Directory"]
 
-        input_images = os.path.join(
+        input_images = p.join(
             settings_object["Working Directory"] + "frame_%04d.png")
         video_render_stream = ffmpeg.input(
             input_images, start_number=project_object["First Frame"])

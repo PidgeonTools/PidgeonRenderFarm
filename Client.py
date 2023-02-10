@@ -1,10 +1,8 @@
 from PIL import Image
 import socket
-import datetime
 import time
 import json
 from os import path as p
-import os
 import essentials
 import subprocess
 #import sys
@@ -13,27 +11,49 @@ import subprocess
 # subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", "pip"])
 # subprocess.call([sys.executable, "-m", "pip", "install", "pillow"])
 
+#import os
 #import shutil
 #from zipfile import ZipFile
 
 #---Client related---#
-current_date = datetime.datetime.now()
+#client_ip = socket.gethostbyname(socket.gethostname())
 #settings_file = f"client_{client_ip}_settings.json"
 settings_file = f"client_settings.json"
+log_file = time.strftime("cSession_%Y%m%d%H%M%S.log")
 
-log_file = time.strftime("cSession_%Y%m%d%H%M%S", current_date)
 settings_object: dict = {}
 
-SCRIPT_DIRECTORY = p.dirname(p.abspath(__file__)) + "/"
-
-#---Setup related---#
-valid_settings: dict = {
-    "Render Device": ["CPU", "CUDA", "OPTIX", "HIP", "METAL", "OPENCL", "CUDA+CPU", "OPTIX+CPU", "HIP+CPU", "METAL+CPU", "OPENCL+CPU"],
-}
+SCRIPT_DIRECTORY: str = p.dirname(p.abspath(__file__)) + "/"
 
 
 def setup():
-    new_save_object = {}
+    valid_settings: dict = {
+        "Render Device": ["CPU", "CUDA", "OPTIX", "HIP", "METAL", "OPENCL", "CUDA+CPU", "OPTIX+CPU", "HIP+CPU", "METAL+CPU", "OPENCL+CPU"],
+    }
+
+    # new save_object with default values / example values
+    new_save_object = {
+        "Master IP": "192.168.178.117",
+        "Master Port": 9090,
+        "Blender Executable": "D:/Program Files (x86)/Steam/steamapps/common/Blender/blender.exe",
+        "Working Directory": SCRIPT_DIRECTORY,
+        # CPU, CUDA, OPTIX, HIP, METAL, (OPENCL) / CUDA+CPU, OPTIX+CPU, HIP+CPU, METAL+CPU, (OPENCL+CPU)
+        "Render Device": "CPU",
+        "Thread Limit": 0,
+        "RAM Limit": 0,
+        "Size Limit": 0,
+        "Job Time Limit": 0,
+        "Allow EEVEE": True,
+        "Allow Cycles": True,
+        "Allow Workbench": True,
+        "Job Limit": 0,
+        "Time Limit": 0,
+        "Keep Output": True,
+        "Keep Input": True,
+        "Error Hold": 30,
+        "Connection Error Hold": 20,
+        "Transfer Error Hold": 5,
+    }
 
     user_input = input("What is the IP address of the master?: ")
     while not essentials.validate_ip(user_input):
@@ -53,11 +73,11 @@ def setup():
         user_input = input("Where is your Blender executable stored?: ")
     new_save_object["Blender Executable"] = user_input
 
-    user_input = input("Which directory to use as working directory?: ")
-    while not p.isdir(user_input):
-        print("Please select a valid directory")
-        user_input = input("Which directory to use as working directory?: ")
-    new_save_object["Working Directory"] = user_input
+    # user_input = input("Which directory to use as working directory?: ")
+    # while not p.isdir(user_input):
+    #     print("Please select a valid directory")
+    #     user_input = input("Which directory to use as working directory?: ")
+    # new_save_object["Working Directory"] = user_input
 
     user_input = input("Which device to use for rendering?: ")
     while not user_input.upper() in valid_settings["Render Device"]:
@@ -137,58 +157,22 @@ def setup():
     save_settings(new_save_object)
 
 
-def save_settings(save_object: dict = {}):
-    save_object_base = {
-        "Master IP": "192.168.178.117",
-        "Master Port": 9090,
-        "Blender Executable": "D:/Program Files (x86)/Steam/steamapps/common/Blender/blender.exe",
-        "Working Directory": SCRIPT_DIRECTORY,
-        # CPU, CUDA, OPTIX, HIP, METAL, (OPENCL) / CUDA+CPU, OPTIX+CPU, HIP+CPU, METAL+CPU, (OPENCL+CPU)
-        "Render Device": "CPU",
-        "Thread Limit": 0,
-        "RAM Limit": 0,
-        "Size Limit": 0,
-        "Job Time Limit": 0,
-        "Allow EEVEE": True,
-        "Allow Cycles": True,
-        "Allow Workbench": True,
-        "Job Limit": 0,
-        "Time Limit": 0,
-        "Keep Output": True,
-        "Keep Input": True,
-        "Error Hold": 30,
-        "Connection Error Hold": 20,
-        "Transfer Error Hold": 5,
-    }
-
-    save_object_out = save_object_base | save_object
-
+def save_settings(save_object: dict):
     global settings_object
-    settings_object = save_object_out
+    settings_object = save_object
 
     with open(settings_file, "w+") as f:
         json.dump(settings_object, f, indent=4)
 
 
-def load_settings(again: bool = False):
-    if p.isfile(settings_file):
+def load_settings():
+    try:
         global settings_object
 
         with open(settings_file, "r") as loaded_settings_file:
             settings_object = json.load(loaded_settings_file)
-
-        # print(settings_object)
-
-    else:
+    except Exception as e:
         setup()
-
-# region Functions
-
-
-def write_to_log(text: str):
-    with open(p.join(settings_object["Working Directory"], log_file), "a") as write_file:
-        write_file.write(text + "\n")
-# endregion
 
 
 def client():
@@ -265,41 +249,55 @@ def client():
             # endregion
 
             # region Render
-            command = [
-                settings_object["Blender Executable"],
-                '-b', f'{data_object_from_server["Project ID"]}.blend',
-                '-o', p.join(settings_object["Working Directory"], "frame_"),
-                '-F', data_object_from_server["File Format"]
-            ]
 
+            # create list
+            command: list = []
+            # append Blender path
+            command.append(settings_object["Blender Executable"])
+            # append .blend file
+            command.append('-b')
+            command.append(f'{data_object_from_server["Project ID"]}.blend')
+            # append output directory and name
+            command.append('-o')
+            command.append(
+                p.join(settings_object["Working Directory"], "frame_####"))
+            # append output file format
+            command.append('-F')
+            command.append(data_object_from_server["File Format"])
+            # append start frame
+            command.append('-s')
+            command.append(data_object_from_server["Frame"])
+            # append end frame
+            command.append('-e')
+            command.append(
+                data_object_from_server["Frame"] + (data_object_from_server["Chunks"] - 1))
+            # if cycles, then set the render device
             if data_object_from_server["Render Engine"] == "Cycles":
                 command.append('--cycles-device')
                 command.append(settings_object["Render Device"])
-                # subprocess.run(f'"{settings_object["Blender Executable"]}" -b "{data_object_from_server["Project ID"]}.blend" -o "{settings_object["Working Directory"]}frame_####" --cycles-device {settings_object["Render Device"]} -f {data_object_from_server["Frame"]}', shell=True)
-            # else:
-                # subprocess.run(f'"{settings_object["Blender Executable"]}" -b "{data_object_from_server["Project ID"]}.blend" -o "{settings_object["Working Directory"]}frame_####" -f {data_object_from_server["Frame"]}', shell=True)
 
-            command.append('-f')
-            command.append(data_object_from_server["Frame"])
-
+            # start blender
             subprocess.run(command)
+
             # endregion
 
             # region Verify
+
+            # generate expected file name
             export_name = "frame_"
             export_name += "0" * \
                 (4 - len(str(data_object_from_server["Frame"])))
             export_name += str(data_object_from_server["Frame"])
             export_name += ".png"
-
-            print(export_name)
-
             export_full_name = p.join(
                 settings_object["Working Directory"], export_name)
+
+            # print(export_name)
 
             data_object_to_server = {"Message": "Output"}
 
             try:
+                # verify output using PIL
                 with Image.open(export_full_name) as test_image:
                     test_image.verify()
                     data_object_to_server["Faulty"] = False
@@ -313,9 +311,12 @@ def client():
                 print(str(e))
                 data_object_to_server["Faulty"] = True
                 data_object_to_server["Frame"] = data_object_from_server["Frame"]
+
             # endregion
 
             # region Connect
+
+            # try to connect to the master until connection established
             while True:
                 try:
                     print("Trying to connect to the server...")
@@ -330,14 +331,18 @@ def client():
                         f'Could not connect to the server, waiting {settings_object["Connection Error Hold"]} seconds')
                     # print(str(e))
                     time.sleep(settings_object["Connection Error Hold"])
+
             # endregion
 
             # region Upload Output
+
             data_to_server = json.dumps(data_object_to_server)
             client_socket.send(data_to_server.encode())
 
+            # drop stream from master -> synced
             client_socket.recv(1024).decode()
 
+            # if output verified, send it to the server
             if not data_object_to_server["Faulty"]:
                 with open(export_full_name, "rb") as tcp_upload:
                     uploadbar = essentials.progressbar(
@@ -352,11 +357,12 @@ def client():
                         stream_bytes = tcp_upload.read(1024)
 
             client_socket.close()
+
             # endregion
         except Exception as e:
             print(
                 f'An ERROR occoured, waiting {settings_object["Error Hold"]} seconds')
-            print(str(e))
+            # print(str(e))
             time.sleep(settings_object["Error Hold"])
 
 
