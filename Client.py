@@ -195,45 +195,39 @@ def connect():
 
 
 def validate_image(en: str, efn: str):
-    dots = {"Message": "Output"}
+    faulty = False
 
     try:
         # verify output using PIL
         with Image.open(efn) as test_image:
             test_image.verify()
 
-            dots["Faulty"] = False
+            faulty = False
 
-        dots["Output Size"] = p.getsize(efn)
-        dots["Frame"] = dots["Frame"]
-        dots["Project Frame"] = en
+        #dots["Output Size"] = p.getsize(efn)
     except Exception as e:
-        print("faulty image detected")
-        print(str(e))
-        dots["Faulty"] = True
-        dots["Frame"] = dots["Frame"]
-    return dots
+        print("faulty image detected: " + en)
+        # print(str(e))
+        faulty = True
+    return faulty
 
 
-def validate_images(images: list):
+def validate_images(images: list, ff: str = "png"):
     dots = {"Message": "Output"}
+    dots["Faulty"] = {}
 
+    # Image is the image number
     for image in images:
-        try:
-            # verify output using PIL
-            with Image.open(efn) as test_image:
-                test_image.verify()
+        # generate expected file name
+        export_name = "frame_"
+        export_name += "0" * (4 - len(str(image)))
+        export_name += str(image)
+        export_name += "." + ff
+        #export_full_name = p.join(settings_object["Working Directory"], export_name)
+        export_full_name = p.join(SCRIPT_DIRECTORY, export_name)
 
-                dots["Faulty"] = False
-
-            dots["Output Size"] = p.getsize(efn)
-            dots["Frame"] = dots["Frame"]
-            dots["Project Frame"] = en
-        except Exception as e:
-            print("faulty image detected")
-            print(str(e))
-            dots["Faulty"] = True
-            dots["Frame"] = dots["Frame"]
+        dots["Faulty"][str(image)] = validate_image(
+            export_name, export_full_name)
     return dots
 
 
@@ -299,7 +293,6 @@ def client():
 
                         stream_bytes = client_socket.recv(1024)
 
-            # Cut the connection
             client_socket.close()
             # endregion
 
@@ -337,12 +330,22 @@ def client():
             # endregion
 
             # region Verify and Compress
+            image_list = []
+
+            for im in range(data_object_from_server["Frame"], (data_object_from_server["Frame"] + data_object_from_server["Chunks"] - 1)):
+                image_list.append(im)
+
+            data_object_to_server = validate_images(
+                image_list, data_object_from_server["File Format"])
+            data_object_to_server["Frames"] = image_list
+
             zip_name = str(data_object_from_server["Frame"]) + "-" + str(
                 data_object_from_server["Frame"] + (data_object_from_server["Chunks"] - 1)) + ".zip"
             with ZipFile(zip_name, 'w') as zip_object:
                 zip_object.write("l")
 
             zip_full_name = p.join(SCRIPT_DIRECTORY, zip_name)
+            data_object_to_server["Size"] = p.getsize(zip_full_name)
             # endregion
 
             client_socket = connect()
@@ -368,46 +371,6 @@ def client():
                         stream_bytes = tcp_upload.read(1024)
 
             client_socket.close()
-
-            # # #region Verify
-            # # # generate expected file name
-            # # export_name = "frame_"
-            # # export_name += "0" * (4 - len(str(data_object_from_server["Frame"])))
-            # # export_name += str(data_object_from_server["Frame"])
-            # # export_name += "." + data_object_from_server["File Format"]
-            # # #export_full_name = p.join(settings_object["Working Directory"], export_name)
-            # # export_full_name = p.join(SCRIPT_DIRECTORY, export_name)
-
-            # # #print(export_name)
-
-            # # data_object_to_server = validate_image(export_name, export_full_name)
-            # # #endregion
-
-            # # client_socket = connect()
-
-            # # #region Upload Output
-            # # data_to_server = json.dumps(data_object_to_server)
-            # # client_socket.send(data_to_server.encode())
-
-            # # # drop stream from master -> synced
-            # # client_socket.recv(1024).decode()
-
-            # # # if output verified, send it to the server
-            # # if not data_object_to_server["Faulty"]:
-            # #     with open(export_full_name, "rb") as tcp_upload:
-            # #         uploadbar = e.progressbar(range(data_object_to_server["Output Size"]))
-
-            # #         stream_bytes = tcp_upload.read(1024)
-            # #         while stream_bytes:
-            # #             stream_bytes = client_socket.send(stream_bytes)
-
-            # #             uploadbar.update(len(stream_bytes))
-
-            # #             stream_bytes = tcp_upload.read(1024)
-
-            # # client_socket.close()
-
-            # # #endregion
 
         except Exception as e:
             print(

@@ -1,3 +1,4 @@
+import threading
 import time
 import json
 import ffmpeg
@@ -5,6 +6,7 @@ from PIL import Image
 import socket
 from os import path as p
 import os
+from zipfile import ZipFile
 import essentials
 import subprocess
 import sys
@@ -15,7 +17,6 @@ import sys
 # subprocess.call([sys.executable, "-m", "pip", "install", "pillow"])
 
 #import shutil
-#from zipfile import ZipFile
 
 #---Master related---#
 #master_ip = socket.gethostbyname(socket.gethostname())
@@ -39,7 +40,7 @@ def setup():
         "Master Port": 9090,
         "Blender Executable": "D:/Program Files (x86)/Steam/steamapps/common/Blender/blender.exe",
         "FFMPEG Directory": "D:/Program Files/ffmpeg/bin",
-        "Working Directory": SCRIPT_DIRECTORY,
+        # "Working Directory": SCRIPT_DIRECTORY,
         "Worker Limit": 0,
         "Keep Output": True,
         "Project ID Length": 8,
@@ -59,11 +60,11 @@ def setup():
         user_input = input("What is your FFMPEG directory?: ")
     new_save_object["FFMPEG Directory"] = user_input
 
-    user_input = input("Which directory to use as working directory?: ")
-    while not p.isdir(user_input):
-        print("Please select a valid directory")
-        user_input = input("Which directory to use as working directory?: ")
-    new_save_object["Working Directory"] = user_input
+    # user_input = input("Which directory to use as working directory?: ")
+    # while not p.isdir(user_input):
+    #     print("Please select a valid directory")
+    #     user_input = input("Which directory to use as working directory?: ")
+    # new_save_object["Working Directory"] = user_input
 
     user_input = input("Maximum amount of clients?: ")
     while not user_input.isdigit():
@@ -152,6 +153,30 @@ def load_project(project_full_file: str):
             frames_left.append(frame + 1)
 
     print(frames_left)
+
+
+def generate_video():
+    if project_object["Generate Video"]:
+        os.environ['PATH'] += ';' + settings_object["FFMPEG Directory"]
+
+        input_images = p.join(SCRIPT_DIRECTORY + "frame_%04d.png")
+        video_render_stream = ffmpeg.input(
+            input_images, start_number=project_object["First Frame"])
+        video_render_stream = ffmpeg.filter(
+            video_render_stream, 'fps', fps=project_object["Video FPS"], round='up')
+
+        if project_object["Resize Video"]:
+            video_render_stream = ffmpeg.filter(
+                video_render_stream, 'scale', w=project_object["New Video Width"], h=project_object["New Video Height"])
+
+        if project_object["VRC"] == "CBR":
+            video_render_stream = ffmpeg.output(
+                video_render_stream, f'{project_object["Project ID"]}.mp4', video_bitrate=project_object["VRC Value"])
+        elif project_object["VRC"] == "CRF":
+            video_render_stream = ffmpeg.output(
+                video_render_stream, f'{project_object["Project ID"]}.mp4', crf=project_object["VRC Value"])
+
+        ffmpeg.run(video_render_stream)
 
 
 def master():
@@ -247,11 +272,11 @@ def master():
             print("Computing Required Data")
             combar = essentials.progressbar(10, 0)
 
-            subprocess.call([settings_object["Blender Executable"], "-b", "-P",
-                             "BPY.py", "--", f'"{settings_object["Working Directory"]}"', "1"])
+            subprocess.call([settings_object["Blender Executable"],
+                             "-b", "-P", "BPY.py", "--", f'"{SCRIPT_DIRECTORY}"', "1"])
             combar.update(1)
 
-            with open(p.join(settings_object["Working Directory"], "vars.json")) as f:
+            with open(p.join(SCRIPT_DIRECTORY, "vars.json")) as f:
                 vars_string = f.read()
                 vars_object = json.loads(vars_string)
                 new_project_object["Render Engine"] = vars_object["RE"]
@@ -285,6 +310,82 @@ def master():
             server()
 
 
+def client_handler(client_connected: socket, client_address: _RetAddress):
+    try:
+        global project_object
+        global frames_left
+
+        data_from_client = client_connected.recv(1024).decode()
+        data_object_from_client = json.loads(data_from_client)
+
+        if data_object_from_client["Message"] == "New":
+            # Do some processing...
+
+            data_object_to_client = {
+                "Message": "NewR",
+                "Project ID": project_object["Project ID"],
+                "Frame": frames_left[0],
+                "Render Engine": project_object["Render Engine"],
+                "File Format": project_object["File Format"],
+                "File Size": p.getsize(project_object[".Blend Full"]),
+            }
+            data_to_client = json.dumps(data_object_to_client)
+            client_connected.send(data_to_client.encode())
+
+            # Blend File
+            data_from_client = client_connected.recv(1024).decode()
+            data_object_from_client = json.loads(data_from_client)
+
+            if data_object_from_client["Needed"]:
+                with open(project_object[".Blend Full"], "rb") as tcp_upload:
+                    #uploadbar = essentials.progressbar(range(data_object_to_client["File Size"]))
+
+                    stream_bytes = tcp_upload.read(1024)
+                    while stream_bytes:
+                        client_connected.send(stream_bytes)
+
+                        # uploadbar.update(len(stream_bytes))
+
+                        stream_bytes = tcp_upload.read(1024)
+
+                    client_connected.shutdown()
+            print("upload done")
+            frames_left.remove(frames_left[0])
+
+        elif data_object_from_client["Message"] == "Output":
+            if data_object_from_client["Faulty"]:
+                frames_left.append(data_object_from_client["Frame"])
+
+            else:
+                client_connected.send("D".encode())
+
+                with open(p.join(SCRIPT_DIRECTORY + data_object_from_client["Project Frame"]), "wb") as tcp_download:
+                    #downloadbar = essentials.progressbar(range(data_object_from_client["Output Size"]))
+
+                    stream_bytes = client_connected.recv(1024)
+                    while stream_bytes:
+                        tcp_download.write(stream_bytes)
+                        # downloadbar.update(len(stream_bytes))
+
+                        stream_bytes = client_connected.recv(1024)
+
+                try:
+                    with Image.open(p.join(SCRIPT_DIRECTORY, data_object_from_client["Project Frame"])) as test_image:
+                        test_image.verify()
+
+                        project_object["Frames Complete"].append(
+                            data_object_from_client["Frame"])
+                        save_project()
+
+                        return 1
+                except:
+                    print("Faulty image detected")
+                    frames_left.append(data_object_from_client["Frame"])
+    except Exception as e:
+        print("an ERROR occoured, continuing anyway")
+        print(e)
+
+
 def server():
     global settings_object
     global project_object
@@ -305,75 +406,8 @@ def server():
             (client_connected, client_address) = server_socket.accept()
             print(f"New Connection: {client_address[0]}@{client_address[1]}")
 
-            data_from_client = client_connected.recv(1024).decode()
-            data_object_from_client = json.loads(data_from_client)
-
-            if data_object_from_client["Message"] == "New":
-                # Do some processing...
-
-                data_object_to_client = {
-                    "Message": "NewR",
-                    "Project ID": project_object["Project ID"],
-                    "Frame": frames_left[0],
-                    "Render Engine": project_object["Render Engine"],
-                    "File Format": project_object["File Format"],
-                    "File Size": p.getsize(project_object[".Blend Full"]),
-                }
-                data_to_client = json.dumps(data_object_to_client)
-                client_connected.send(data_to_client.encode())
-
-                # Blend File
-                data_from_client = client_connected.recv(1024).decode()
-                data_object_from_client = json.loads(data_from_client)
-
-                if data_object_from_client["Needed"]:
-                    with open(project_object[".Blend Full"], "rb") as tcp_upload:
-                        uploadbar = essentials.progressbar(
-                            range(data_object_to_client["File Size"]))
-
-                        stream_bytes = tcp_upload.read(1024)
-                        while stream_bytes:
-                            client_connected.send(stream_bytes)
-
-                            uploadbar.update(len(stream_bytes))
-
-                            stream_bytes = tcp_upload.read(1024)
-
-                        client_connected.shutdown()
-                print("upload done")
-                frames_left.remove(frames_left[0])
-
-            elif data_object_from_client["Message"] == "Output":
-                if data_object_from_client["Faulty"]:
-                    frames_left.append(data_object_from_client["Frame"])
-
-                else:
-                    client_connected.send("Drop".encode())
-
-                    with open(p.join(settings_object["Working Directory"] + data_object_from_client["Project Frame"]), "wb") as tcp_download:
-                        downloadbar = essentials.progressbar(
-                            range(data_object_from_client["Output Size"]))
-
-                        stream_bytes = client_connected.recv(1024)
-                        while stream_bytes:
-                            tcp_download.write(stream_bytes)
-                            downloadbar.update(len(stream_bytes))
-
-                            stream_bytes = client_connected.recv(1024)
-
-                    try:
-                        with Image.open(p.join(settings_object["Working Directory"], data_object_from_client["Project Frame"])) as test_image:
-                            test_image.verify()
-
-                            project_object["Frames Complete"].append(
-                                data_object_from_client["Frame"])
-                            save_project()
-
-                            render_progressbar.update(1)
-                    except:
-                        print("Faulty image detected")
-                        frames_left.append(data_object_from_client["Frame"])
-
+            threading.Thread(target=client_handler, args=(
+                client_connected, client_address)).start()
         except Exception as e:
             print("an ERROR occoured, continuing anyway")
             print(e)
@@ -381,79 +415,9 @@ def server():
     # server_socket.shutdown()
     server_socket.close()
 
-    if project_object["Generate Video"]:
-        os.environ['PATH'] += ';' + settings_object["FFMPEG Directory"]
+    generate_video()
 
-        input_images = p.join(
-            settings_object["Working Directory"] + "frame_%04d.png")
-        video_render_stream = ffmpeg.input(
-            input_images, start_number=project_object["First Frame"])
-        video_render_stream = ffmpeg.filter(
-            video_render_stream, 'fps', fps=project_object["Video FPS"], round='up')
-
-        if project_object["Resize Video"]:
-            video_render_stream = ffmpeg.filter(
-                video_render_stream, 'scale', w=project_object["New Video Width"], h=project_object["New Video Height"])
-
-        if project_object["VRC"] == "CBR":
-            video_render_stream = ffmpeg.output(
-                video_render_stream, f'{project_object["Project ID"]}.mp4', video_bitrate=project_object["VRC Value"])
-        elif project_object["VRC"] == "CRF":
-            video_render_stream = ffmpeg.output(
-                video_render_stream, f'{project_object["Project ID"]}.mp4', crf=project_object["VRC Value"])
-
-        ffmpeg.run(video_render_stream)
-
-        sys.exit()
-
-
-def get_frames(path):
-    import struct
-
-    with open(path, "rb") as blendfile:
-        head = blendfile.read(7)
-
-        if head[0:2] == b'\x1f\x8b':  # gzip magic
-            import gzip
-            blendfile.seek(0)
-            blendfile = gzip.open(blendfile, "rb")
-            head = blendfile.read(7)
-
-        if head != b'BLENDER':
-            print("not a blend file:", path)
-            blendfile.close()
-            return []
-
-        is_64_bit = (blendfile.read(1) == b'-')
-
-        # true for PPC, false for X86
-        is_big_endian = (blendfile.read(1) == b'V')
-
-        # Now read the bhead chunk!!!
-        blendfile.read(3)  # skip the version
-
-        scenes = []
-
-        sizeof_bhead = 24 if is_64_bit else 20
-
-        while blendfile.read(4) == b'REND':
-            sizeof_bhead_left = sizeof_bhead - 4
-
-            struct.unpack('>i' if is_big_endian else '<i',
-                          blendfile.read(4))[0]
-            sizeof_bhead_left -= 4
-
-            # We don't care about the rest of the bhead struct
-            blendfile.read(sizeof_bhead_left)
-
-            # Now we want the scene name, start and end frame. this is 32bites long
-            start_frame, end_frame = struct.unpack(
-                '>2i' if is_big_endian else '<2i', blendfile.read(8))
-
-            scenes.append(start_frame)
-            scenes.append(end_frame)
-
-    return scenes
+    os._exit(os.EX_OK)
 
 
 if __name__ == "__main__":
