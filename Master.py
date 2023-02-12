@@ -1,8 +1,6 @@
 import threading
 import time
 import json
-import ffmpeg
-from PIL import Image
 import socket
 from os import path as p
 import os
@@ -18,6 +16,7 @@ import sys
 
 #import shutil
 
+
 #---Master related---#
 #master_ip = socket.gethostbyname(socket.gethostname())
 #settings_file: str = f"master_{master_ip}_settings.json"
@@ -25,9 +24,10 @@ settings_file: str = f"master_settings.json"
 log_file = time.strftime("mSession_%Y%m%d%H%M%S.log")
 
 settings_object: dict = {}
-project_extension: str = "rrfp"
+PROJECT_EXTENSION: str = "rrfp"
 
 SCRIPT_DIRECTORY: str = p.dirname(p.abspath(__file__)) + "/"
+PROJECT_DIRECTORY: str = SCRIPT_DIRECTORY
 
 #---Project Related---#
 project_object: dict = {}
@@ -102,9 +102,13 @@ def save_settings(save_object: dict):
 def load_settings(again: bool = False):
     try:
         global settings_object
+        global PROJECT_DIRECTORY
 
         with open(settings_file, "r") as loaded_settings_file:
             settings_object = json.load(loaded_settings_file)
+
+        PROJECT_DIRECTORY = SCRIPT_DIRECTORY + \
+            settings_object["Project ID"] + "/"
     except Exception as e:
         setup()
 
@@ -134,7 +138,7 @@ def save_project(save_object: dict = {}):
 
     project_object = save_object_base | project_object | save_object
 
-    with open(f'{project_object["Project ID"]}.{project_extension}', "w+") as f:
+    with open(f'{project_object["Project ID"]}.{PROJECT_EXTENSION}', "w+") as f:
         json.dump(project_object, f, indent=4)
 
 
@@ -157,6 +161,8 @@ def load_project(project_full_file: str):
 
 def generate_video():
     if project_object["Generate Video"]:
+        import ffmpeg
+
         os.environ['PATH'] += ';' + settings_object["FFMPEG Directory"]
 
         input_images = p.join(SCRIPT_DIRECTORY + "frame_%04d.png")
@@ -181,6 +187,7 @@ def generate_video():
 
 def master():
     global settings_object
+    global PROJECT_DIRECTORY
     global project_object
     global frames_left
 
@@ -195,7 +202,7 @@ def master():
         elif command_input == "l" or command_input == "load":
             project_input = input("Copy and paste the path to your project: ")
 
-            while not p.isfile(project_input) and not project_input.endswith(f'.{project_extension}'):
+            while not p.isfile(project_input) and not project_input.endswith(f'.{PROJECT_EXTENSION}'):
                 print("Please select an exsisting and compatible file")
                 project_input = input(
                     "Copy and paste the path to your project: ")
@@ -213,6 +220,12 @@ def master():
                 print("Please select an exsisting and compatible file")
                 user_input = input("Copy and paste the path to your .blend: ")
             new_project_object[".Blend Full"] = user_input
+
+            user_input = None
+            while user_input == None:
+                user_input = essentials.parse_bool(
+                    input("Render a test frame? [y/N]: "), False)
+            test_render = user_input
 
             user_input = None
             while user_input == None:
@@ -270,10 +283,32 @@ def master():
             print("The project setup has been completed! The script will now compute all the other required data on it's own.")
 
             print("Computing Required Data")
-            combar = essentials.progressbar(10, 0)
+            combar = essentials.progressbar(11, 0)
 
-            subprocess.call([settings_object["Blender Executable"],
-                             "-b", "-P", "BPY.py", "--", f'"{SCRIPT_DIRECTORY}"', "1"])
+            PROJECT_DIRECTORY = SCRIPT_DIRECTORY + \
+                new_project_object["Project ID"] + "/"
+            os.mkdir(PROJECT_DIRECTORY)
+            combar.update(1)
+
+            command: list = []
+            # append Blender path
+            command.append(settings_object["Blender Executable"])
+            # append .blend file
+            command.append('-b')
+            command.append(new_project_object[".Blend Full"])
+            # append BPY.py script
+            command.append('-P')
+            command.append("BPY.py")
+            # append BPY.py arguments
+            command.append('--')
+            command.append(SCRIPT_DIRECTORY)
+            if test_render:
+                command.append("1")
+            else:
+                command.append("0")
+
+            # start blender
+            subprocess.run(command)
             combar.update(1)
 
             with open(p.join(SCRIPT_DIRECTORY, "vars.json")) as f:
@@ -310,7 +345,48 @@ def master():
             server()
 
 
-def client_handler(client_connected: socket, client_address: _RetAddress):
+def validate_image(en: str, efn: str):
+    from PIL import Image
+    global frames_left
+
+    faulty = False
+
+    try:
+        # verify output using PIL
+        with Image.open(efn) as test_image:
+            test_image.verify()
+
+            faulty = False
+
+        #dots["Output Size"] = p.getsize(efn)
+    except Exception as e:
+        print("faulty image detected: " + en)
+        # print(str(e))
+        faulty = True
+    return faulty
+
+
+def validate_images(images: list, zn: str, ff: str = "png"):
+    with ZipFile(p.join(PROJECT_DIRECTORY + zn), 'w') as zip_object:
+        zip_object.extractall(PROJECT_DIRECTORY)
+
+    # Image is the image number
+    for image in images:
+        # generate expected file name
+        export_name = "frame_"
+        export_name += "0" * (4 - len(str(image)))
+        export_name += str(image)
+        export_name += "." + ff
+        #export_full_name = p.join(settings_object["Working Directory"], export_name)
+        export_full_name = p.join(PROJECT_DIRECTORY, export_name)
+
+        tmp = validate_image(export_name, export_full_name)
+
+        if tmp:
+            frames_left.append(image)
+
+
+def client_handler(client_connected: socket, client_address):
     try:
         global project_object
         global frames_left
@@ -319,12 +395,19 @@ def client_handler(client_connected: socket, client_address: _RetAddress):
         data_object_from_client = json.loads(data_from_client)
 
         if data_object_from_client["Message"] == "New":
+            if frames_left <= 0:
+                data_object_to_client = {"Message": "NAN"}
+                data_to_client = json.dumps(data_object_to_client)
+                client_connected.send(data_to_client.encode())
+
+                return
             # Do some processing...
 
             data_object_to_client = {
                 "Message": "NewR",
                 "Project ID": project_object["Project ID"],
                 "Frame": frames_left[0],
+                "Chunks": project_object["Chunks"],
                 "Render Engine": project_object["Render Engine"],
                 "File Format": project_object["File Format"],
                 "File Size": p.getsize(project_object[".Blend Full"]),
@@ -353,13 +436,22 @@ def client_handler(client_connected: socket, client_address: _RetAddress):
             frames_left.remove(frames_left[0])
 
         elif data_object_from_client["Message"] == "Output":
-            if data_object_from_client["Faulty"]:
-                frames_left.append(data_object_from_client["Frame"])
+            valid_output = False
+            valid_frames = []
+            for f in data_object_from_client["Frames"]:
+                # If "Faulty", then add back to list
+                if data_object_from_client["Faulty"][str(f)]:
+                    frames_left.append[f]
+                else:
+                    # Else download the output
+                    valid_output = True
+                    valid_frames.append(f)
 
-            else:
+            if valid_output:
+                # Send response -> dropped -> synced
                 client_connected.send("D".encode())
 
-                with open(p.join(SCRIPT_DIRECTORY + data_object_from_client["Project Frame"]), "wb") as tcp_download:
+                with open(p.join(PROJECT_DIRECTORY + data_object_from_client["File"]), "wb") as tcp_download:
                     #downloadbar = essentials.progressbar(range(data_object_from_client["Output Size"]))
 
                     stream_bytes = client_connected.recv(1024)
@@ -368,19 +460,12 @@ def client_handler(client_connected: socket, client_address: _RetAddress):
                         # downloadbar.update(len(stream_bytes))
 
                         stream_bytes = client_connected.recv(1024)
+                    client_connected.shutdown()
 
-                try:
-                    with Image.open(p.join(SCRIPT_DIRECTORY, data_object_from_client["Project Frame"])) as test_image:
-                        test_image.verify()
+                validate_images(valid_frames)
 
-                        project_object["Frames Complete"].append(
-                            data_object_from_client["Frame"])
-                        save_project()
-
-                        return 1
-                except:
-                    print("Faulty image detected")
-                    frames_left.append(data_object_from_client["Frame"])
+        elif data_object_from_client["Message"] == "Ping":
+            client_connected.send("Pong".encode())
     except Exception as e:
         print("an ERROR occoured, continuing anyway")
         print(e)
@@ -397,7 +482,6 @@ def server():
     server_socket.listen()
 
     print("Server started. Waiting for clients...")
-    #render_progressbar = tqdm(range(project_object["Frames Total"]), unit="Frame", unit_divisor=1)
     render_progressbar = essentials.progressbar(
         range(project_object["Frames Total"]))
 
@@ -412,7 +496,6 @@ def server():
             print("an ERROR occoured, continuing anyway")
             print(e)
 
-    # server_socket.shutdown()
     server_socket.close()
 
     generate_video()

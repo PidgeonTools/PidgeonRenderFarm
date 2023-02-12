@@ -1,4 +1,3 @@
-from PIL import Image
 import socket
 import time
 import json
@@ -195,6 +194,8 @@ def connect():
 
 
 def validate_image(en: str, efn: str):
+    from PIL import Image
+
     faulty = False
 
     try:
@@ -216,19 +217,24 @@ def validate_images(images: list, ff: str = "png"):
     dots = {"Message": "Output"}
     dots["Faulty"] = {}
 
-    # Image is the image number
-    for image in images:
-        # generate expected file name
-        export_name = "frame_"
-        export_name += "0" * (4 - len(str(image)))
-        export_name += str(image)
-        export_name += "." + ff
-        #export_full_name = p.join(settings_object["Working Directory"], export_name)
-        export_full_name = p.join(SCRIPT_DIRECTORY, export_name)
+    zip_name = str(images[0]) + "-" + str(images[-1]) + ".zip"
+    with ZipFile(zip_name, 'w') as zip_object:
+        # Image is the image number
+        for image in images:
+            # generate expected file name
+            export_name = "frame_"
+            export_name += "0" * (4 - len(str(image)))
+            export_name += str(image)
+            export_name += "." + ff
+            #export_full_name = p.join(settings_object["Working Directory"], export_name)
+            export_full_name = p.join(SCRIPT_DIRECTORY, export_name)
 
-        dots["Faulty"][str(image)] = validate_image(
-            export_name, export_full_name)
-    return dots
+            dots["Faulty"][str(image)] = validate_image(
+                export_name, export_full_name)
+
+            if dots["Faulty"][str(image)] == False:
+                zip_object.write(export_full_name)
+    return dots, zip_name
 
 
 def client():
@@ -335,14 +341,10 @@ def client():
             for im in range(data_object_from_server["Frame"], (data_object_from_server["Frame"] + data_object_from_server["Chunks"] - 1)):
                 image_list.append(im)
 
-            data_object_to_server = validate_images(
+            data_object_to_server, zip_name = validate_images(
                 image_list, data_object_from_server["File Format"])
             data_object_to_server["Frames"] = image_list
-
-            zip_name = str(data_object_from_server["Frame"]) + "-" + str(
-                data_object_from_server["Frame"] + (data_object_from_server["Chunks"] - 1)) + ".zip"
-            with ZipFile(zip_name, 'w') as zip_object:
-                zip_object.write("l")
+            data_object_to_server["File"] = zip_name
 
             zip_full_name = p.join(SCRIPT_DIRECTORY, zip_name)
             data_object_to_server["Size"] = p.getsize(zip_full_name)
@@ -357,7 +359,13 @@ def client():
             client_socket.recv(1024).decode()
 
             # if output verified, send it to the server
-            if not data_object_to_server["Faulty"]:
+            tmp = True
+            for f in data_object_to_server["Frames"]:
+                if not data_object_to_server["Faulty"][str(f)]:
+                    tmp = False
+                    break
+
+            if not tmp:
                 with open(zip_full_name, "rb") as tcp_upload:
                     uploadbar = e.progressbar(
                         range(data_object_to_server["Output Size"]))
