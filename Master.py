@@ -4,10 +4,9 @@ import json
 import socket
 from os import path as p
 import os
-from zipfile import ZipFile
 import essentials
 import subprocess
-import sys
+#import sys
 
 # subprocess.call([sys.executable, "-m", "ensurepip", "--user"])
 # subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", "pip"])
@@ -18,16 +17,24 @@ import sys
 
 
 #---Master related---#
-#master_ip = socket.gethostbyname(socket.gethostname())
-#settings_file: str = f"master_{master_ip}_settings.json"
-settings_file: str = f"master_settings.json"
-log_file = time.strftime("mSession_%Y%m%d%H%M%S.log")
+SCRIPT_DIRECTORY: str = p.dirname(p.abspath(__file__)) + "\\"
+LOGS_DIRECTORY: str = p.join(SCRIPT_DIRECTORY, "logs/")
+PROJECT_DIRECTORY: str = SCRIPT_DIRECTORY
 
-settings_object: dict = {}
 PROJECT_EXTENSION: str = "rrfp"
 
-SCRIPT_DIRECTORY: str = p.dirname(p.abspath(__file__)) + "/"
-PROJECT_DIRECTORY: str = SCRIPT_DIRECTORY
+#master_ip = socket.gethostbyname(socket.gethostname())
+#settings_file: str = f"master_{master_ip}_settings.json"
+settings_file_name = f"master_settings.json"
+settings_file = p.join(SCRIPT_DIRECTORY, settings_file_name)
+
+if not p.isdir(LOGS_DIRECTORY):
+    os.mkdir(LOGS_DIRECTORY)
+log_file_name = time.strftime("mSession_%Y%m%d%H%M%S.log")
+log_file = p.join(LOGS_DIRECTORY, log_file_name)
+
+settings_object: dict = {}
+#settings_file = f"client_{client_ip}_settings.json"
 
 #---Project Related---#
 project_object: dict = {}
@@ -102,13 +109,9 @@ def save_settings(save_object: dict):
 def load_settings(again: bool = False):
     try:
         global settings_object
-        global PROJECT_DIRECTORY
 
         with open(settings_file, "r") as loaded_settings_file:
             settings_object = json.load(loaded_settings_file)
-
-        PROJECT_DIRECTORY = SCRIPT_DIRECTORY + \
-            settings_object["Project ID"] + "/"
     except Exception as e:
         setup()
 
@@ -143,11 +146,14 @@ def save_project(save_object: dict = {}):
 
 
 def load_project(project_full_file: str):
+    global PROJECT_DIRECTORY
     global project_object
     global frames_left
 
     with open(project_full_file, "r") as f:
         project_object = json.load(f)
+
+    PROJECT_DIRECTORY = SCRIPT_DIRECTORY + project_object["Project ID"] + "/"
 
     # Calculate Missing Frames
     frames_left = []
@@ -155,8 +161,6 @@ def load_project(project_full_file: str):
     for frame in range(project_object["Frames Total"]):
         if not frame + 1 in project_object["Frames Complete"]:
             frames_left.append(frame + 1)
-
-    print(frames_left)
 
 
 def generate_video():
@@ -298,10 +302,10 @@ def master():
             command.append(new_project_object[".Blend Full"])
             # append BPY.py script
             command.append('-P')
-            command.append("BPY.py")
+            command.append(p.join(SCRIPT_DIRECTORY, "BPY.py"))
             # append BPY.py arguments
             command.append('--')
-            command.append(SCRIPT_DIRECTORY)
+            command.append(PROJECT_DIRECTORY)
             if test_render:
                 command.append("1")
             else:
@@ -311,7 +315,7 @@ def master():
             subprocess.run(command)
             combar.update(1)
 
-            with open(p.join(SCRIPT_DIRECTORY, "vars.json")) as f:
+            with open(p.join(PROJECT_DIRECTORY, "vars.json")) as f:
                 vars_string = f.read()
                 vars_object = json.loads(vars_string)
                 new_project_object["Render Engine"] = vars_object["RE"]
@@ -367,6 +371,8 @@ def validate_image(en: str, efn: str):
 
 
 def validate_images(images: list, zn: str, ff: str = "png"):
+    from zipfile import ZipFile
+
     with ZipFile(p.join(PROJECT_DIRECTORY + zn), 'w') as zip_object:
         zip_object.extractall(PROJECT_DIRECTORY)
 
@@ -395,7 +401,7 @@ def client_handler(client_connected: socket, client_address):
         data_object_from_client = json.loads(data_from_client)
 
         if data_object_from_client["Message"] == "New":
-            if frames_left <= 0:
+            if len(frames_left) <= 0:
                 data_object_to_client = {"Message": "NAN"}
                 data_to_client = json.dumps(data_object_to_client)
                 client_connected.send(data_to_client.encode())
@@ -482,8 +488,7 @@ def server():
     server_socket.listen()
 
     print("Server started. Waiting for clients...")
-    render_progressbar = essentials.progressbar(
-        range(project_object["Frames Total"]))
+    render_progressbar = essentials.progressbar(project_object["Frames Total"])
 
     while len(project_object["Frames Complete"]) < project_object["Frames Total"]:
         try:

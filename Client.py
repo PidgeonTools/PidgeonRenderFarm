@@ -1,9 +1,9 @@
 import socket
 import time
 import json
-from zipfile import ZipFile
 from os import path as p
-import essentials as e
+import os
+import essentials
 import subprocess
 #import sys
 
@@ -11,18 +11,24 @@ import subprocess
 # subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", "pip"])
 # subprocess.call([sys.executable, "-m", "pip", "install", "pillow"])
 
-#import os
 #import shutil
 
 #---Client related---#
+SCRIPT_DIRECTORY: str = p.dirname(p.abspath(__file__)) + "/"
+LOGS_DIRECTORY: str = p.join(SCRIPT_DIRECTORY, "logs/")
+PROJECT_DIRECTORY: str = SCRIPT_DIRECTORY
+
 #client_ip = socket.gethostbyname(socket.gethostname())
 #settings_file = f"client_{client_ip}_settings.json"
-settings_file = f"client_settings.json"
-log_file = time.strftime("cSession_%Y%m%d%H%M%S.log")
+settings_file_name = f"client_settings.json"
+settings_file = p.join(SCRIPT_DIRECTORY, settings_file_name)
+
+if not p.isdir(LOGS_DIRECTORY):
+    os.mkdir(LOGS_DIRECTORY)
+log_file_name = time.strftime("cSession_%Y%m%d%H%M%S.log")
+log_file = p.join(LOGS_DIRECTORY, log_file_name)
 
 settings_object: dict = {}
-
-SCRIPT_DIRECTORY: str = p.dirname(p.abspath(__file__)) + "/"
 
 
 def setup():
@@ -55,13 +61,13 @@ def setup():
     }
 
     user_input = input("What is the IP address of the master?: ")
-    while not e.validate_ip(user_input):
+    while not essentials.validate_ip(user_input):
         print("Please select a valid ip address (xxx.xxx.xxx.xxx")
         user_input = input("What is the IP address of the master?: ")
     new_save_object["Master IP"] = user_input
 
     user_input = input("What is the port of the master?: ")
-    while not e.is_port(user_input):
+    while not essentials.is_port(user_input):
         print("Please input a whole number between 1 and 65536")
         user_input = input("What is the port of the master?: ")
     new_save_object["Master Port"] = int(user_input)
@@ -82,7 +88,7 @@ def setup():
     while not user_input.upper() in valid_settings["Render Device"]:
         print("Please select an valid option (see README.md)")
         user_input = input("Which Render Engine does your project use?: ")
-    new_save_object["Render Device"] = user_input.upper
+    new_save_object["Render Device"] = user_input.upper()
 
     user_input = input("Maximum amount of threads to use (see README.md)?: ")
     while not user_input.isdigit():
@@ -113,19 +119,19 @@ def setup():
 
     user_input = None
     while user_input == None:
-        user_input = e.parse_bool(
+        user_input = essentials.parse_bool(
             input("Allow EEVEE rendering on this client? [y/N]: "), True)
     new_save_object["Allow EEVEE"] = user_input
 
     user_input = None
     while user_input == None:
-        user_input = e.parse_bool(
+        user_input = essentials.parse_bool(
             input("Allow Cycles rendering on this client? [y/N]: "), True)
     new_save_object["Allow Cycles"] = user_input
 
     user_input = None
     while user_input == None:
-        user_input = e.parse_bool(
+        user_input = essentials.parse_bool(
             input("Allow Workbench rendering on this client? [y/N]: "), True)
     new_save_object["Allow Workbench"] = user_input
 
@@ -143,13 +149,13 @@ def setup():
 
     user_input = None
     while user_input == None:
-        user_input = e.parse_bool(
+        user_input = essentials.parse_bool(
             input("Keep the rendered and uploaded frames? [y/N]: "), True)
     new_save_object["Keep Output"] = user_input
 
     user_input = None
     while user_input == None:
-        user_input = e.parse_bool(input(
+        user_input = essentials.parse_bool(input(
             "Keep the project files received from the master? (See README.md) [y/N]: "), True)
     new_save_object["Keep Input"] = user_input
 
@@ -170,7 +176,7 @@ def load_settings():
 
         with open(settings_file, "r") as loaded_settings_file:
             settings_object = json.load(loaded_settings_file)
-    except Exception as e:
+    except Exception as essentials:
         setup()
 
 
@@ -185,10 +191,10 @@ def connect():
                         settings_object["Master Port"]))
 
             break
-        except Exception as e:
+        except Exception as essentials:
             print(
                 f'Could not connect to the server, waiting {settings_object["Connection Error Hold"]} seconds')
-            # print(str(e))
+            # print(str(essentials))
             time.sleep(settings_object["Connection Error Hold"])
     return cs
 
@@ -206,14 +212,16 @@ def validate_image(en: str, efn: str):
             faulty = False
 
         #dots["Output Size"] = p.getsize(efn)
-    except Exception as e:
+    except Exception as essentials:
         print("faulty image detected: " + en)
-        # print(str(e))
+        # print(str(essentials))
         faulty = True
     return faulty
 
 
 def validate_images(images: list, ff: str = "png"):
+    from zipfile import ZipFile
+
     dots = {"Message": "Output"}
     dots["Faulty"] = {}
 
@@ -226,8 +234,7 @@ def validate_images(images: list, ff: str = "png"):
             export_name += "0" * (4 - len(str(image)))
             export_name += str(image)
             export_name += "." + ff
-            #export_full_name = p.join(settings_object["Working Directory"], export_name)
-            export_full_name = p.join(SCRIPT_DIRECTORY, export_name)
+            export_full_name = p.join(PROJECT_DIRECTORY, export_name)
 
             dots["Faulty"][str(image)] = validate_image(
                 export_name, export_full_name)
@@ -239,6 +246,7 @@ def validate_images(images: list, ff: str = "png"):
 
 def client():
     global settings_object
+    global PROJECT_DIRECTORY
 
     while True:
         client_socket = connect()
@@ -249,6 +257,7 @@ def client():
                 "Message": "New",
                 "RAM Limit": settings_object["RAM Limit"],
                 "Size Limit": settings_object["Size Limit"],
+                "Time Limit": settings_object["Time Limit"],
                 # Outdated
                 "Allow EEVEE": settings_object["Allow EEVEE"],
                 "Allow Cycles": settings_object["Allow Cycles"],
@@ -272,8 +281,16 @@ def client():
             # region Aquire Project
             #print(p.abspath(f'{data_object_from_server["Project ID"]}.blend'))
 
+            PROJECT_DIRECTORY = SCRIPT_DIRECTORY + \
+                data_object_from_server["Project ID"] + "/"
+            if not p.isdir(PROJECT_DIRECTORY):
+                os.mkdir(PROJECT_DIRECTORY)
+
+            blend_file = p.join(
+                PROJECT_DIRECTORY, f'{data_object_from_server["Project ID"]}.blend')
+
             # Make sure we have the correct file by checking if we have a file and if it has the same size as on the server side
-            if p.isfile(f'{data_object_from_server["Project ID"]}.blend') and p.getsize(f'{data_object_from_server["Project ID"]}.blend') == data_object_from_server["File Size"]:
+            if p.isfile(blend_file) and p.getsize(blend_file) == data_object_from_server["File Size"]:
                 # If we have it, tell the server there is no need
                 data_object_to_server = {"Message": "File", "Needed": False}
                 data_to_server = json.dumps(data_object_to_server)
@@ -285,9 +302,8 @@ def client():
                 client_socket.send(data_to_server.encode())
 
                 # Create a new file
-                with open(f'{data_object_from_server["Project ID"]}.blend', "wb") as tcp_download:
-                    downloadbar = e.progressbar(
-                        range(data_object_from_server["File Size"]))
+                with open(blend_file, "wb") as tcp_download:
+                    #downloadbar = essentials.progressbar(range(data_object_from_server["File Size"]))
 
                     # Download file over TCP
                     # Receive data and write to file until there is no more data
@@ -295,7 +311,7 @@ def client():
                     while stream_bytes:
                         tcp_download.write(stream_bytes)
 
-                        downloadbar.update(len(stream_bytes))
+                        # downloadbar.update(len(stream_bytes))
 
                         stream_bytes = client_socket.recv(1024)
 
@@ -313,8 +329,7 @@ def client():
             command.append(f'{data_object_from_server["Project ID"]}.blend')
             # append output directory and name
             command.append('-o')
-            # command.append(p.join(settings_object["Working Directory"], "frame_####"))
-            command.append(p.join(SCRIPT_DIRECTORY, "frame_####"))
+            command.append(p.join(PROJECT_DIRECTORY, "frame_####"))
             # append output file format
             command.append('-F')
             command.append(data_object_from_server["File Format"])
@@ -322,7 +337,7 @@ def client():
             command.append('-s')
             command.append(data_object_from_server["Frame"])
             # append end frame
-            command.append('-e')
+            command.append('-essentials')
             command.append(
                 data_object_from_server["Frame"] + (data_object_from_server["Chunks"] - 1))
             # if cycles, then set the render device
@@ -346,7 +361,7 @@ def client():
             data_object_to_server["Frames"] = image_list
             data_object_to_server["File"] = zip_name
 
-            zip_full_name = p.join(SCRIPT_DIRECTORY, zip_name)
+            zip_full_name = p.join(PROJECT_DIRECTORY, zip_name)
             data_object_to_server["Size"] = p.getsize(zip_full_name)
             # endregion
 
@@ -367,23 +382,22 @@ def client():
 
             if not tmp:
                 with open(zip_full_name, "rb") as tcp_upload:
-                    uploadbar = e.progressbar(
-                        range(data_object_to_server["Output Size"]))
+                    #uploadbar = essentials.progressbar(range(data_object_to_server["Output Size"]))
 
                     stream_bytes = tcp_upload.read(1024)
                     while stream_bytes:
                         stream_bytes = client_socket.send(stream_bytes)
 
-                        uploadbar.update(len(stream_bytes))
+                        # uploadbar.update(len(stream_bytes))
 
                         stream_bytes = tcp_upload.read(1024)
 
             client_socket.close()
 
-        except Exception as e:
+        except Exception as essentials:
             print(
                 f'An ERROR occoured, waiting {settings_object["Error Hold"]} seconds')
-            # print(str(e))
+            # print(str(essentials))
             time.sleep(settings_object["Error Hold"])
 
 
