@@ -176,7 +176,7 @@ def load_settings():
 
         with open(settings_file, "r") as loaded_settings_file:
             settings_object = json.load(loaded_settings_file)
-    except Exception as essentials:
+    except Exception as e:
         setup()
 
 
@@ -191,7 +191,7 @@ def connect():
                         settings_object["Master Port"]))
 
             break
-        except Exception as essentials:
+        except Exception as e:
             print(
                 f'Could not connect to the server, waiting {settings_object["Connection Error Hold"]} seconds')
             # print(str(essentials))
@@ -212,7 +212,7 @@ def validate_image(en: str, efn: str):
             faulty = False
 
         #dots["Output Size"] = p.getsize(efn)
-    except Exception as essentials:
+    except Exception as e:
         print("faulty image detected: " + en)
         # print(str(essentials))
         faulty = True
@@ -226,7 +226,8 @@ def validate_images(images: list, ff: str = "png"):
     dots["Faulty"] = {}
 
     zip_name = str(images[0]) + "-" + str(images[-1]) + ".zip"
-    with ZipFile(zip_name, 'w') as zip_object:
+    zip_full_name = p.join(PROJECT_DIRECTORY, zip_name)
+    with ZipFile(zip_full_name, 'w') as zip_object:
         # Image is the image number
         for image in images:
             # generate expected file name
@@ -235,13 +236,14 @@ def validate_images(images: list, ff: str = "png"):
             export_name += str(image)
             export_name += "." + ff
             export_full_name = p.join(PROJECT_DIRECTORY, export_name)
+            print(export_full_name)
 
             dots["Faulty"][str(image)] = validate_image(
                 export_name, export_full_name)
 
             if dots["Faulty"][str(image)] == False:
                 zip_object.write(export_full_name)
-    return dots, zip_name
+    return dots, zip_name, zip_full_name
 
 
 def client():
@@ -273,128 +275,142 @@ def client():
             # Data structure:
             # Message, Project ID, Frame, Render Engine, File Size, (average render time, average ram use)
 
-            print(f'Project ID: {data_object_from_server["Project ID"]}')
-            print(f'Frame: {data_object_from_server["Frame"]}')
-            print(f'Render Engine: {data_object_from_server["Render Engine"]}')
-            # endregion
+            print(data_object_from_server)
+            print(data_object_from_server["Message"])
 
-            # region Aquire Project
-            #print(p.abspath(f'{data_object_from_server["Project ID"]}.blend'))
+            if data_object_from_server["Message"] == "NewR":
+                print(f'Project ID: {data_object_from_server["Project ID"]}')
+                print(
+                    f'Frames: {data_object_from_server["Frame"]} - {data_object_from_server["Frame"] + data_object_from_server["Chunks"]}')
+                print(
+                    f'Render Engine: {data_object_from_server["Render Engine"]}')
+                # endregion
 
-            PROJECT_DIRECTORY = SCRIPT_DIRECTORY + \
-                data_object_from_server["Project ID"] + "/"
-            if not p.isdir(PROJECT_DIRECTORY):
-                os.mkdir(PROJECT_DIRECTORY)
+                # region Aquire Project
+                #print(p.abspath(f'{data_object_from_server["Project ID"]}.blend'))
 
-            blend_file = p.join(
-                PROJECT_DIRECTORY, f'{data_object_from_server["Project ID"]}.blend')
+                PROJECT_DIRECTORY = SCRIPT_DIRECTORY + \
+                    data_object_from_server["Project ID"] + "/"
+                if not p.isdir(PROJECT_DIRECTORY):
+                    os.mkdir(PROJECT_DIRECTORY)
 
-            # Make sure we have the correct file by checking if we have a file and if it has the same size as on the server side
-            if p.isfile(blend_file) and p.getsize(blend_file) == data_object_from_server["File Size"]:
-                # If we have it, tell the server there is no need
-                data_object_to_server = {"Message": "File", "Needed": False}
-                data_to_server = json.dumps(data_object_to_server)
-                client_socket.send(data_to_server.encode())
-            else:
-                # Else tell the server we still need it
-                data_object_to_server = {"Message": "File", "Needed": True}
-                data_to_server = json.dumps(data_object_to_server)
-                client_socket.send(data_to_server.encode())
+                blend_file = p.join(
+                    PROJECT_DIRECTORY, f'{data_object_from_server["Project ID"]}.blend')
 
-                # Create a new file
-                with open(blend_file, "wb") as tcp_download:
-                    #downloadbar = essentials.progressbar(range(data_object_from_server["File Size"]))
+                # Make sure we have the correct file by checking if we have a file and if it has the same size as on the server side
+                if p.isfile(blend_file) and p.getsize(blend_file) == data_object_from_server["File Size"]:
+                    # If we have it, tell the server there is no need
+                    data_object_to_server = {
+                        "Message": "File", "Needed": False}
+                    data_to_server = json.dumps(data_object_to_server)
+                    client_socket.send(data_to_server.encode())
+                else:
+                    # Else tell the server we still need it
+                    data_object_to_server = {"Message": "File", "Needed": True}
+                    data_to_server = json.dumps(data_object_to_server)
+                    client_socket.send(data_to_server.encode())
 
-                    # Download file over TCP
-                    # Receive data and write to file until there is no more data
-                    stream_bytes = client_socket.recv(1024)
-                    while stream_bytes:
-                        tcp_download.write(stream_bytes)
+                    # Create a new file
+                    with open(blend_file, "wb") as tcp_download:
+                        #downloadbar = essentials.progressbar(range(data_object_from_server["File Size"]))
 
-                        # downloadbar.update(len(stream_bytes))
-
+                        # Download file over TCP
+                        # Receive data and write to file until there is no more data
                         stream_bytes = client_socket.recv(1024)
+                        while stream_bytes:
+                            tcp_download.write(stream_bytes)
 
-            client_socket.close()
-            # endregion
+                            # downloadbar.update(len(stream_bytes))
 
-            # region Render
+                            stream_bytes = client_socket.recv(1024)
 
-            # create list
-            command: list = []
-            # append Blender path
-            command.append(settings_object["Blender Executable"])
-            # append .blend file
-            command.append('-b')
-            command.append(f'{data_object_from_server["Project ID"]}.blend')
-            # append output directory and name
-            command.append('-o')
-            command.append(p.join(PROJECT_DIRECTORY, "frame_####"))
-            # append output file format
-            command.append('-F')
-            command.append(data_object_from_server["File Format"])
-            # append start frame
-            command.append('-s')
-            command.append(data_object_from_server["Frame"])
-            # append end frame
-            command.append('-essentials')
-            command.append(
-                data_object_from_server["Frame"] + (data_object_from_server["Chunks"] - 1))
-            # if cycles, then set the render device
-            if data_object_from_server["Render Engine"] == "Cycles":
-                command.append('--cycles-device')
-                command.append(settings_object["Render Device"])
+                client_socket.close()
+                print("done")
+                # endregion
 
-            # start blender
-            subprocess.run(command)
+                # region Render
 
-            # endregion
+                # create list
+                command: list = []
+                # append Blender path
+                command.append(settings_object["Blender Executable"])
+                # append .blend file
+                command.append('-b')
+                command.append(blend_file)
+                # append output directory and name
+                command.append('-o')
+                # command.append(p.join(PROJECT_DIRECTORY, "frame_####"))
+                command.append("//frame_####")
+                # append output file format
+                command.append('-F')
+                command.append(data_object_from_server["File Format"])
+                # append start frame
+                command.append('-s')
+                command.append(str(data_object_from_server["Frame"]))
+                # append end frame
+                command.append('-e')
+                command.append(
+                    str(data_object_from_server["Frame"] + data_object_from_server["Chunks"]))
+                command.append("-a")
+                # if cycles, then set the render device
+                # if data_object_from_server["Render Engine"] == "Cycles":
+                #     command.append('--cycles-device')
+                #     command.append(settings_object["Render Device"])
 
-            # region Verify and Compress
-            image_list = []
+                print(command)
 
-            for im in range(data_object_from_server["Frame"], (data_object_from_server["Frame"] + data_object_from_server["Chunks"] - 1)):
-                image_list.append(im)
+                # start blender
+                subprocess.run(command)
 
-            data_object_to_server, zip_name = validate_images(
-                image_list, data_object_from_server["File Format"])
-            data_object_to_server["Frames"] = image_list
-            data_object_to_server["File"] = zip_name
+                # endregion
 
-            zip_full_name = p.join(PROJECT_DIRECTORY, zip_name)
-            data_object_to_server["Size"] = p.getsize(zip_full_name)
-            # endregion
+                # region Verify and Compress
+                image_list = []
 
-            client_socket = connect()
+                for im in range(data_object_from_server["Frame"], data_object_from_server["Frame"] + data_object_from_server["Chunks"] + 1):
+                    image_list.append(im)
 
-            data_to_server = json.dumps(data_object_to_server)
-            client_socket.send(data_to_server.encode())
+                data_object_to_server, zip_name, zip_full_name = validate_images(
+                    image_list, data_object_from_server["File Format"])
+                data_object_to_server["Frames"] = image_list
+                data_object_to_server["File"] = zip_name
 
-            # drop stream from master -> synced
-            client_socket.recv(1024).decode()
+                data_object_to_server["Size"] = p.getsize(zip_full_name)
+                # endregion
 
-            # if output verified, send it to the server
-            tmp = True
-            for f in data_object_to_server["Frames"]:
-                if not data_object_to_server["Faulty"][str(f)]:
-                    tmp = False
-                    break
+                client_socket = connect()
 
-            if not tmp:
-                with open(zip_full_name, "rb") as tcp_upload:
-                    #uploadbar = essentials.progressbar(range(data_object_to_server["Output Size"]))
+                data_to_server = json.dumps(data_object_to_server)
+                client_socket.send(data_to_server.encode())
 
-                    stream_bytes = tcp_upload.read(1024)
-                    while stream_bytes:
-                        stream_bytes = client_socket.send(stream_bytes)
+                # drop stream from master -> synced
+                client_socket.recv(1024).decode()
 
-                        # uploadbar.update(len(stream_bytes))
+                # if output verified, send it to the server
+                tmp = True
+                for f in data_object_to_server["Frames"]:
+                    if not data_object_to_server["Faulty"][str(f)]:
+                        tmp = False
+                        break
+
+                if not tmp:
+                    with open(zip_full_name, "rb") as tcp_upload:
+                        #uploadbar = essentials.progressbar(range(data_object_to_server["Output Size"]))
 
                         stream_bytes = tcp_upload.read(1024)
+                        while stream_bytes:
+                            stream_bytes = client_socket.send(stream_bytes)
 
-            client_socket.close()
+                            # uploadbar.update(len(stream_bytes))
 
-        except Exception as essentials:
+                            stream_bytes = tcp_upload.read(1024)
+
+                client_socket.close()
+
+            else:
+                break
+
+        except Exception as e:
             print(
                 f'An ERROR occoured, waiting {settings_object["Error Hold"]} seconds')
             # print(str(essentials))

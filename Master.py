@@ -4,6 +4,7 @@ import json
 import socket
 from os import path as p
 import os
+import shutil
 import essentials
 import subprocess
 #import sys
@@ -12,8 +13,6 @@ import subprocess
 # subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", "pip"])
 # subprocess.call([sys.executable, "-m", "pip", "install", "ffmpeg-python"])
 # subprocess.call([sys.executable, "-m", "pip", "install", "pillow"])
-
-#import shutil
 
 
 #---Master related---#
@@ -35,6 +34,10 @@ log_file = p.join(LOGS_DIRECTORY, log_file_name)
 
 settings_object: dict = {}
 #settings_file = f"client_{client_ip}_settings.json"
+
+lock = threading.Lock()
+aquire_lock = threading.Lock()
+save_lock = threading.Lock()
 
 #---Project Related---#
 project_object: dict = {}
@@ -117,6 +120,7 @@ def load_settings(again: bool = False):
 
 
 def save_project(save_object: dict = {}):
+    lock.acquire()
     save_object_base = {
         "Project ID": "NAN",
         ".Blend Full": "NAN",
@@ -141,8 +145,9 @@ def save_project(save_object: dict = {}):
 
     project_object = save_object_base | project_object | save_object
 
-    with open(f'{project_object["Project ID"]}.{PROJECT_EXTENSION}', "w+") as f:
+    with open(p.join(PROJECT_DIRECTORY + f'{project_object["Project ID"]}.{PROJECT_EXTENSION}'), "w+") as f:
         json.dump(project_object, f, indent=4)
+    lock.release()
 
 
 def load_project(project_full_file: str):
@@ -169,7 +174,7 @@ def generate_video():
 
         os.environ['PATH'] += ';' + settings_object["FFMPEG Directory"]
 
-        input_images = p.join(SCRIPT_DIRECTORY + "frame_%04d.png")
+        input_images = p.join(PROJECT_DIRECTORY + "frame_%04d.png")
         video_render_stream = ffmpeg.input(
             input_images, start_number=project_object["First Frame"])
         video_render_stream = ffmpeg.filter(
@@ -180,11 +185,11 @@ def generate_video():
                 video_render_stream, 'scale', w=project_object["New Video Width"], h=project_object["New Video Height"])
 
         if project_object["VRC"] == "CBR":
-            video_render_stream = ffmpeg.output(
-                video_render_stream, f'{project_object["Project ID"]}.mp4', video_bitrate=project_object["VRC Value"])
+            video_render_stream = ffmpeg.output(video_render_stream, p.join(
+                PROJECT_DIRECTORY + f'{project_object["Project ID"]}.mp4'), video_bitrate=project_object["VRC Value"])
         elif project_object["VRC"] == "CRF":
-            video_render_stream = ffmpeg.output(
-                video_render_stream, f'{project_object["Project ID"]}.mp4', crf=project_object["VRC Value"])
+            video_render_stream = ffmpeg.output(video_render_stream, p.join(
+                PROJECT_DIRECTORY + f'{project_object["Project ID"]}.mp4'), crf=project_object["VRC Value"])
 
         ffmpeg.run(video_render_stream)
 
@@ -287,12 +292,15 @@ def master():
             print("The project setup has been completed! The script will now compute all the other required data on it's own.")
 
             print("Computing Required Data")
-            combar = essentials.progressbar(11, 0)
 
             PROJECT_DIRECTORY = SCRIPT_DIRECTORY + \
                 new_project_object["Project ID"] + "/"
             os.mkdir(PROJECT_DIRECTORY)
-            combar.update(1)
+
+            tmp = p.join(PROJECT_DIRECTORY,
+                         f'{new_project_object["Project ID"]}.blend')
+            shutil.copy(new_project_object[".Blend Full"], tmp)
+            new_project_object[".Blend Full"] = tmp
 
             command: list = []
             # append Blender path
@@ -313,7 +321,6 @@ def master():
 
             # start blender
             subprocess.run(command)
-            combar.update(1)
 
             with open(p.join(PROJECT_DIRECTORY, "vars.json")) as f:
                 vars_string = f.read()
@@ -323,12 +330,10 @@ def master():
                 new_project_object["File Format"] = vars_object["FF"]
                 new_project_object["First Frame"] = vars_object["FS"]
                 new_project_object["Last Frame"] = vars_object["FE"]
-            combar.update(5)
 
             frame_count = new_project_object["Last Frame"] - \
                 (new_project_object["First Frame"] - 1)
             new_project_object["Frames Total"] = frame_count
-            combar.update(1)
 
             current_frame = new_project_object["First Frame"]
 
@@ -336,17 +341,80 @@ def master():
                 frames_left.append(current_frame)
                 current_frame += 1
 
-            combar.update(1)
-
             new_project_object["Frames Complete"] = []
-            combar.update(1)
 
             save_project(new_project_object)
-            combar.update(1)
 
             print("Everything is setup! The rendering process will begin now.")
 
             server()
+
+
+def aquire_frame(reqs: dict):
+    aquire_lock.acquire()
+    global frames_left
+
+    if len(frames_left) <= 0:
+        aquire_lock.release()
+        return "NAN", -1, -1
+
+    # if project_object["Render Time"] > reqs["RAM Limit"]:
+    #    aquire_lock.release()
+    #    return "NAN", -1, -1
+
+    if project_object["Render Time"] > reqs["Time Limit"]:
+        aquire_lock.release()
+        return "NAN", -1, -1
+
+    # To be replaced
+    if not reqs["Allow EEVEE"] and project_object["Render Engine"] == "EEVEE":
+        aquire_lock.release()
+        return "NAN", -1, -1
+
+    if not reqs["Allow Cycles"] and project_object["Render Engine"] == "Cycles":
+        aquire_lock.release()
+        return "NAN", -1, -1
+
+    if not reqs["Allow Workbench"] and project_object["Render Engine"] == "Workbench":
+        aquire_lock.release()
+        return "NAN", -1, -1
+
+    frames_left_tmp = frames_left.copy()
+    tmp = frames_left[0]
+    round = 0
+
+    while round <= project_object["Chunks"]:
+
+        if (tmp + round) in frames_left_tmp:
+            frames_left.remove(1)
+
+            if len(frames_left) <= 0:
+
+                tmp1 = (tmp + round) - frames_left_tmp[0]
+                aquire_lock.release()
+                return "NewR", frames_left_tmp[0], tmp1
+
+        elif not (tmp + round) in frames_left_tmp:
+            tmp1 = (tmp + round) - frames_left_tmp[0]
+            aquire_lock.release()
+            return "NewR", frames_left_tmp[0], tmp1
+
+        if round == project_object["Chunks"]:
+            tmp1 = (tmp + round) - frames_left_tmp[0]
+            aquire_lock.release()
+            return "NewR", frames_left_tmp[0], tmp1
+
+        round += 1
+    aquire_lock.release()
+
+
+def save_frame(frame: int):
+    lock.acquire()
+    global project_object
+
+    project_object["Frames Complete"].append(frame)
+    lock.release()
+    # save_project(project_object)
 
 
 def validate_image(en: str, efn: str):
@@ -386,10 +454,12 @@ def validate_images(images: list, zn: str, ff: str = "png"):
         #export_full_name = p.join(settings_object["Working Directory"], export_name)
         export_full_name = p.join(PROJECT_DIRECTORY, export_name)
 
-        tmp = validate_image(export_name, export_full_name)
+        faulty = validate_image(export_name, export_full_name)
 
-        if tmp:
+        if faulty:
             frames_left.append(image)
+        else:
+            save_frame(image)
 
 
 def client_handler(client_connected: socket, client_address):
@@ -401,19 +471,20 @@ def client_handler(client_connected: socket, client_address):
         data_object_from_client = json.loads(data_from_client)
 
         if data_object_from_client["Message"] == "New":
-            if len(frames_left) <= 0:
-                data_object_to_client = {"Message": "NAN"}
+
+            (msg, start, chunk) = aquire_frame(data_object_from_client)
+
+            if msg == "NAN":
+                data_object_to_client = {"Message": msg}
                 data_to_client = json.dumps(data_object_to_client)
                 client_connected.send(data_to_client.encode())
-
                 return
-            # Do some processing...
 
             data_object_to_client = {
-                "Message": "NewR",
+                "Message": msg,
                 "Project ID": project_object["Project ID"],
-                "Frame": frames_left[0],
-                "Chunks": project_object["Chunks"],
+                "Frame": start,
+                "Chunks": chunk,
                 "Render Engine": project_object["Render Engine"],
                 "File Format": project_object["File Format"],
                 "File Size": p.getsize(project_object[".Blend Full"]),
@@ -436,10 +507,7 @@ def client_handler(client_connected: socket, client_address):
                         # uploadbar.update(len(stream_bytes))
 
                         stream_bytes = tcp_upload.read(1024)
-
-                    client_connected.shutdown()
             print("upload done")
-            frames_left.remove(frames_left[0])
 
         elif data_object_from_client["Message"] == "Output":
             valid_output = False
@@ -466,9 +534,9 @@ def client_handler(client_connected: socket, client_address):
                         # downloadbar.update(len(stream_bytes))
 
                         stream_bytes = client_connected.recv(1024)
-                    client_connected.shutdown()
 
-                validate_images(valid_frames)
+                validate_images(
+                    valid_frames, data_object_from_client["File"], project_object["File Format"])
 
         elif data_object_from_client["Message"] == "Ping":
             client_connected.send("Pong".encode())
@@ -488,18 +556,20 @@ def server():
     server_socket.listen()
 
     print("Server started. Waiting for clients...")
-    render_progressbar = essentials.progressbar(project_object["Frames Total"])
+    #render_progressbar = essentials.progressbar(project_object["Frames Total"])
 
     while len(project_object["Frames Complete"]) < project_object["Frames Total"]:
         try:
             (client_connected, client_address) = server_socket.accept()
             print(f"New Connection: {client_address[0]}@{client_address[1]}")
 
-            threading.Thread(target=client_handler, args=(
-                client_connected, client_address)).start()
+            #threading.Thread(target=client_handler, args=(client_connected, client_address)).start()
+            client_handler(client_connected, client_address)
         except Exception as e:
             print("an ERROR occoured, continuing anyway")
             print(e)
+
+    print("All clients connected")
 
     server_socket.close()
 
