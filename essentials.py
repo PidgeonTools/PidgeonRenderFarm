@@ -60,6 +60,10 @@ def is_port(port: str = "9090"):
     return int(port) >= 1 and int(port) <= 65535
 
 
+def fix_windows_path(path: str):
+    return path.replace("\\", "/")
+
+
 def write_to_log(path: str, txt: str):
     with open(path, "a+") as f:
         f.write(time.strftime("%Y/%m/%d/%H:%M:%S:    ") + txt)

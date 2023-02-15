@@ -225,7 +225,9 @@ def validate_images(images: list, ff: str = "png"):
     dots = {"Message": "Output"}
     dots["Faulty"] = {}
 
-    zip_name = str(images[0]) + "-" + str(images[-1]) + ".zip"
+    os.chdir(PROJECT_DIRECTORY)
+
+    zip_name = str(images[0]) + "_" + str(images[-1]) + ".zip"
     zip_full_name = p.join(PROJECT_DIRECTORY, zip_name)
     with ZipFile(zip_full_name, 'w') as zip_object:
         # Image is the image number
@@ -242,7 +244,8 @@ def validate_images(images: list, ff: str = "png"):
                 export_name, export_full_name)
 
             if dots["Faulty"][str(image)] == False:
-                zip_object.write(export_full_name)
+                zip_object.write(export_name)
+
     return dots, zip_name, zip_full_name
 
 
@@ -373,7 +376,7 @@ def client():
                 data_object_to_server, zip_name, zip_full_name = validate_images(
                     image_list, data_object_from_server["File Format"])
                 data_object_to_server["Frames"] = image_list
-                data_object_to_server["File"] = zip_name
+                # data_object_to_server["File"] = zip_name
 
                 data_object_to_server["Size"] = p.getsize(zip_full_name)
                 # endregion
@@ -383,9 +386,6 @@ def client():
                 data_to_server = json.dumps(data_object_to_server)
                 client_socket.send(data_to_server.encode())
 
-                # drop stream from master -> synced
-                client_socket.recv(1024).decode()
-
                 # if output verified, send it to the server
                 tmp = True
                 for f in data_object_to_server["Frames"]:
@@ -393,22 +393,26 @@ def client():
                         tmp = False
                         break
 
+                # drop stream from master -> synced
+                client_socket.recv(1024).decode()
+
                 if not tmp:
                     with open(zip_full_name, "rb") as tcp_upload:
                         #uploadbar = essentials.progressbar(range(data_object_to_server["Output Size"]))
 
                         stream_bytes = tcp_upload.read(1024)
                         while stream_bytes:
-                            stream_bytes = client_socket.send(stream_bytes)
+                            # client_socket.send(stream_bytes)
 
                             # uploadbar.update(len(stream_bytes))
 
+                            client_socket.sendall(stream_bytes)
+
                             stream_bytes = tcp_upload.read(1024)
-
-                client_socket.close()
-
+                    # client_socket.shutdown(2)
+                    client_socket.close()
             else:
-                break
+                time.sleep(60)
 
         except Exception as e:
             print(

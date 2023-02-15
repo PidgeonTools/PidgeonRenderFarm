@@ -16,7 +16,7 @@ import subprocess
 
 
 #---Master related---#
-SCRIPT_DIRECTORY: str = p.dirname(p.abspath(__file__)) + "\\"
+SCRIPT_DIRECTORY: str = p.dirname(p.abspath(__file__)) + "/"
 LOGS_DIRECTORY: str = p.join(SCRIPT_DIRECTORY, "logs/")
 PROJECT_DIRECTORY: str = SCRIPT_DIRECTORY
 
@@ -435,13 +435,14 @@ def validate_image(en: str, efn: str):
         print("faulty image detected: " + en)
         # print(str(e))
         faulty = True
+        os._exit(0)
     return faulty
 
 
 def validate_images(images: list, zn: str, ff: str = "png"):
     from zipfile import ZipFile
 
-    with ZipFile(p.join(PROJECT_DIRECTORY + zn), 'w') as zip_object:
+    with ZipFile(p.join(PROJECT_DIRECTORY + zn), 'r') as zip_object:
         zip_object.extractall(PROJECT_DIRECTORY)
 
     # Image is the image number
@@ -507,6 +508,8 @@ def client_handler(client_connected: socket, client_address):
                         # uploadbar.update(len(stream_bytes))
 
                         stream_bytes = tcp_upload.read(1024)
+
+                client_connected.close()
             print("upload done")
 
         elif data_object_from_client["Message"] == "Output":
@@ -525,18 +528,26 @@ def client_handler(client_connected: socket, client_address):
                 # Send response -> dropped -> synced
                 client_connected.send("D".encode())
 
-                with open(p.join(PROJECT_DIRECTORY + data_object_from_client["File"]), "wb") as tcp_download:
+                os.chdir(PROJECT_DIRECTORY)
+
+                file_name = str(data_object_from_client["Frames"][0]) + "_" + str(
+                    data_object_from_client["Frames"][-1]) + ".zip"
+
+                with open(str(p.join(PROJECT_DIRECTORY, file_name)), "wb") as tcp_download:
                     #downloadbar = essentials.progressbar(range(data_object_from_client["Output Size"]))
 
                     stream_bytes = client_connected.recv(1024)
                     while stream_bytes:
-                        tcp_download.write(stream_bytes)
+
                         # downloadbar.update(len(stream_bytes))
 
-                        stream_bytes = client_connected.recv(1024)
+                        tcp_download.write(stream_bytes)
 
-                validate_images(
-                    valid_frames, data_object_from_client["File"], project_object["File Format"])
+                        stream_bytes = client_connected.recv(1024)
+                client_connected.close()
+
+                validate_images(valid_frames, file_name,
+                                project_object["File Format"])
 
         elif data_object_from_client["Message"] == "Ping":
             client_connected.send("Pong".encode())
@@ -569,13 +580,11 @@ def server():
             print("an ERROR occoured, continuing anyway")
             print(e)
 
-    print("All clients connected")
-
     server_socket.close()
 
     generate_video()
 
-    os._exit(os.EX_OK)
+    os._exit(0)
 
 
 if __name__ == "__main__":
