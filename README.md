@@ -2,7 +2,7 @@
 Pidgeon Render Farm is a p2p (peer to peer - no third party) render farm software. Because no third party server is involved, you don't need an internet connection, just a local network. It allows you to use the computation power of multiple machines (e.g. macBook, desktop and laptop) to render on one (Blender) project. For now you can only render animations with RRF.
 
 ### Note
-You may have to configure your firewall on the server side. See troubleshooting section for more details.
+You may have to configure your firewall. [See troubleshooting section for more details](#server-socket-wont-start).
 
 ## Requirements
 RAM: ~50 MB + RAM for Blender
@@ -18,26 +18,26 @@ Python: >= 3.8 recommended
 ### Operating System
 Modern Windows (7 and above), Linux and MacOS are supported. Though only the Windows and Linux versions are tested.
 
--> You help testing by running the file and creating an issue on GitHub or by contacting us on Discord (see INFO section)
+-> You help testing by using the render farm and creating an [issue on GitHub](https://github.com/PidgeonTools/PidgeonRenderFarm/issues/new?template=bug_report.md) or by contacting us on [Discord](https://discord.gg/cnFdGQP)!
 
 ## Future Plans
 - [ ] Support for software other than Blender
-- [ ] ! Support for Multiple Blender versions
+- [ ] ❗ Support for Multiple Blender versions
 - [ ] Rework render engine system
 - [ ] Support for custom Blender builds (e.g. E-Cycles)
 - [ ] Support for custom render engines (e.g. Radeon Pro Render)
 - [ ] Support for non animation projects
-- [ ] 0 Master handling multiple connections
+- [ ] ⏱️ Master handling multiple connections
 - [x] Bandwidth saving mode (Chunks)
 - [x] Automatically detecting render engine
-- [ ] ? Automatic Blender download
+- [ ] 💡 Automatic Blender download
 - [x] GUI (SuperRenderFarm)
 
-! = important
+❗ = important
 
-? = just a rough idea
+💡 = just a rough idea
 
-0 = halted
+⏱️ = halted
 
 ## Setup
 ### Client
@@ -90,3 +90,9 @@ You need FFMPEG to automatically generate a video. This is an optional feature. 
 
 ### Why do I need to install Pillow?
 You need Pillow to check the rendered output. This is not optional yet.
+
+### What is the FFMPEG directory?
+The directory is the subdirectory "bin" of the file you downloaded and decompressed in step 3 and 4 of the master setup. E.g. "c:/Program Files/FFMPEG/bin"
+
+### Do you collect any data?
+No!
