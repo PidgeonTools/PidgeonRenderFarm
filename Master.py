@@ -319,6 +319,8 @@ def master():
             else:
                 command.append("0")
 
+            command.append("> nul")
+
             # start blender
             subprocess.run(command)
 
@@ -367,15 +369,15 @@ def aquire_frame(reqs: dict):
         return "NAN", -1, -1
 
     # To be replaced
-    if not reqs["Allow EEVEE"] and project_object["Render Engine"] == "EEVEE":
+    if not reqs["Allow EEVEE"] and project_object["Render Engine"] == "BLENDER_EEVEE":
         aquire_lock.release()
         return "NAN", -1, -1
 
-    if not reqs["Allow Cycles"] and project_object["Render Engine"] == "Cycles":
+    if not reqs["Allow Cycles"] and project_object["Render Engine"] == "CYCLES":
         aquire_lock.release()
         return "NAN", -1, -1
 
-    if not reqs["Allow Workbench"] and project_object["Render Engine"] == "Workbench":
+    if not reqs["Allow Workbench"] and project_object["Render Engine"] == "BLENDER_WORKBENCH":
         aquire_lock.release()
         return "NAN", -1, -1
 

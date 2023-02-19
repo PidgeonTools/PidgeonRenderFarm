@@ -356,11 +356,11 @@ def client():
                     str(data_object_from_server["Frame"] + data_object_from_server["Chunks"]))
                 command.append("-a")
                 # if cycles, then set the render device
-                # if data_object_from_server["Render Engine"] == "Cycles":
-                #     command.append('--cycles-device')
-                #     command.append(settings_object["Render Device"])
+                if data_object_from_server["Render Engine"] == "Cycles":
+                    command.append('--cycles-device')
+                    command.append(settings_object["Render Device"])
 
-                print(command)
+                command.append("1> nul")
 
                 # start blender
                 subprocess.run(command)
