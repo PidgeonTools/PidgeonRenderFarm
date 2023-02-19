@@ -70,11 +70,11 @@ def setup():
         user_input = input("What is your FFMPEG directory?: ")
     new_save_object["FFMPEG Directory"] = user_input
 
-    # user_input = input("Which directory to use as working directory?: ")
-    # while not p.isdir(user_input):
-    #     print("Please select a valid directory")
-    #     user_input = input("Which directory to use as working directory?: ")
-    # new_save_object["Working Directory"] = user_input
+    user_input = input("Blender executable: ")
+    while not p.isfile(user_input):
+        print("Please select a valid executable")
+        user_input = input("Blender executable: ")
+    new_save_object["Blender Executable"] = user_input
 
     user_input = input("Maximum amount of clients?: ")
     while not user_input.isdigit():
@@ -143,7 +143,7 @@ def save_project(save_object: dict = {}):
 
     global project_object
 
-    project_object = save_object_base | project_object | save_object
+    project_object = save_object
 
     with open(p.join(PROJECT_DIRECTORY + f'{project_object["Project ID"]}.{PROJECT_EXTENSION}'), "w+") as f:
         json.dump(project_object, f, indent=4)
@@ -388,7 +388,7 @@ def aquire_frame(reqs: dict):
     while round <= project_object["Chunks"]:
 
         if (tmp + round) in frames_left_tmp:
-            frames_left.remove(1)
+            frames_left.remove(frames_left[0])
 
             if len(frames_left) <= 0:
 
@@ -520,7 +520,7 @@ def client_handler(client_connected: socket, client_address):
             for f in data_object_from_client["Frames"]:
                 # If "Faulty", then add back to list
                 if data_object_from_client["Faulty"][str(f)]:
-                    frames_left.append[f]
+                    frames_left.append(f)
                 else:
                     # Else download the output
                     valid_output = True

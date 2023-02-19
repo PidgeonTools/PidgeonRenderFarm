@@ -360,7 +360,8 @@ def client():
                     command.append('--cycles-device')
                     command.append(settings_object["Render Device"])
 
-                command.append("1> nul")
+                # command.append("1> nul")
+                print(command)
 
                 # start blender
                 subprocess.run(command)
