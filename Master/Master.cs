@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Diagnostics;
-using System.Linq.Expressions;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -8,6 +7,7 @@ using System.Text.Json;
 
 class Master
 {
+    #region Global Variables
     // Initialize global variables
     // Initialize global File names, directories
     public static string SCRIPT_DIRECTORY = Path.GetDirectoryName(System.Reflection.Assembly.GetEntryAssembly().Location);
@@ -19,11 +19,12 @@ class Master
     public static string DATA_FILE = "";
 
     // Create global objects and variables
-    public static float VERSION = 4.0f;
+    public static float VERSION = 1.0f;
     public static Settings SETTINGS;
     public static PRF_Data PRF_DATA;
     public static Project PROJECT;
     public static List<int> frames_left = new List<int>();
+    #endregion
 
     // Runs at start
     static void Main(string[] args)
@@ -46,7 +47,6 @@ class Master
         // Main loop start
         Load_Settings();
         Collect_Data();
-        Show_Top_Bar();
         Main_Menu();
     }
 
@@ -58,6 +58,7 @@ class Master
             "New project",
             "Load project from disk",
             "Re-run setup",
+            "Visit documentation",
             "Get help on Discord",
             "Donate - Out of order",
             "Exit"
@@ -71,7 +72,7 @@ class Master
             // Compare selection with options and execute function
             if (selection == items[0])
             {
-
+                Project_Setup();
             }
 
             else if (selection == items[1])
@@ -87,12 +88,19 @@ class Master
 
             else if (selection == items[3])
             {
+                // Open documentation on Github.com
+                Process.Start(new ProcessStartInfo("https://github.com/PidgeonTools/PidgeonRenderFarm") { UseShellExecute = true });
+                Main_Menu();
+            }
+
+            else if (selection == items[4])
+            {
                 // Open Discord invite in browser
                 Process.Start(new ProcessStartInfo("https://discord.gg/cnFdGQP") { UseShellExecute = true });
                 Main_Menu();
             }
 
-            else if (selection == items[4])
+            else if (selection == items[5])
             {
 
             }
@@ -156,6 +164,7 @@ class Master
         Console.ReadKey();
     }
 
+    #region Menu_Display
     // Open a semi-graphical menu allowing easy user input
     public static string Menu(List<string> options, List<string> headlines)
     {
@@ -251,15 +260,22 @@ class Master
         Console.WriteLine("#--------------------------------------------------------------#");
         Console.WriteLine("");
     }
+    #endregion
 
     #region Setup
     public static void First_Time_Setup()
     {
         // Create empty settings object
         Settings new_settings = new Settings();
+        // Removes the need to type "new List<string> { "Yes", "No" }" every time
+        List<string> basic_bool = new List<string> { "Yes", "No" };
 
         // Write version - for updating in the future
         new_settings.version = VERSION;
+
+        // Enable logging
+        // Use Menu() to grab user input
+        new_settings.enable_logging = Parse_Bool(Menu(basic_bool, new List<string> { "Enable logging? (It is recommended to turn this on. To see whats included please refer to the documentation!)" }));
 
         // Port
         // Let the user input a valid port
@@ -269,13 +285,14 @@ class Master
         string user_input = Console.ReadLine();
         while (!Is_Port(user_input))
         {
-            Console.WriteLine("Please input a whole number between 1 and 65536");
-            user_input = Console.ReadLine();
-
             if (user_input == "")
             {
                 user_input = "8080";
+                break;
             }
+
+            Console.WriteLine("Please input a whole number between 1 and 65536");
+            user_input = Console.ReadLine();
         }
         new_settings.port = Math.Abs(int.Parse(user_input));
         Console.Clear();
@@ -294,23 +311,19 @@ class Master
 
         // Keep output
         // Use Menu() to grab user input
-        new_settings.keep_output = Parse_Bool(Menu(new List<string> { "Yes", "No" },
-                                                   new List<string> { "Keep the files received from the clients?" }));
+        new_settings.keep_output = Parse_Bool(Menu(basic_bool, new List<string> { "Keep the files received from the clients?" }));
 
         // Use FTP
         // Use Menu() to grab user input
-        new_settings.use_ftp = Parse_Bool(Menu(new List<string> { "Yes", "No" },
-                                               new List<string> { "Use 'File Transfer Protocol' instead of sockets for file distribution?" }));
+        new_settings.use_ftp = Parse_Bool(Menu(basic_bool, new List<string> { "Use 'File Transfer Protocol' instead of sockets for file distribution?" }));
 
         // Use ZIP
         // Use Menu() to grab user input
-        new_settings.use_zip = Parse_Bool(Menu(new List<string> { "Yes", "No" },
-                                               new List<string> { "Zip/compress files before distributing? (might save some bandwitdh at the cost of image quality)" }));
+        new_settings.use_zip = Parse_Bool(Menu(basic_bool, new List<string> { "Zip/compress files before distributing? (might save some bandwitdh at the cost of image quality)" }));
 
         // Data collection
         // Use Menu() to grab user input
-        new_settings.collect_data = Parse_Bool(Menu(new List<string> { "Yes", "No" },
-                                                    new List<string> { "Allow us to collect data? (We have no acess to it, even if you enter yes!) " }));
+        new_settings.collect_data = Parse_Bool(Menu(basic_bool, new List<string> { "Allow us to collect data? (We have no acess to it, even if you enter yes!) " }));
 
         // Save the settings
         Save_Settings(new_settings);
@@ -358,7 +371,7 @@ class Master
     {
         // Create empty project
         Project new_project = new Project();
-Math.Abs
+
         // +1 on data file
         Save_Data();
         // Generate ID based on project number
@@ -410,7 +423,7 @@ Math.Abs
             // Resize the video
             // Use Menu() to grab user input
             new_project.video_resize = Parse_Bool(Menu(new List<string> { "Yes", "No" },
-                                                   new List<string> { "Rescale the video?" }));
+                                                       new List<string> { "Rescale the video?" }));
 
             // New video witdh/x
             // Let user input a valid resolution
@@ -422,7 +435,7 @@ Math.Abs
                 Console.WriteLine("Please input a whole number");
                 user_input = Console.ReadLine();
             }
-            new_project.video_x = Math.Absint.Parse(user_input));
+            new_project.video_x = Math.Abs(int.Parse(user_input));
             Console.Clear();
 
             // New video height/y
@@ -454,26 +467,42 @@ Math.Abs
 
         // Get project directory name and create it
         PROJECT_DIRECTORY = Path.Join(SCRIPT_DIRECTORY, new_project.id);
-        irectory.CreateDirectory(PROJECT_DIRECTORY);
+        Directory.CreateDirectory(PROJECT_DIRECTORY);
 
         // Create a command for blender to optain some variables
         //string command = SETTINGS.blender_executable;
-        string command = "-b ";
-        command += new_project.full_path_blend;
-        command += " -P ";
-        command += "BPY.py";
-        command += " -- ";
-        command += PROJECT_DIRECTORY;
+        string args = "-b ";
+        args += new_project.full_path_blend;
+        args += " -P ";
+        args += "BPY.py";
+        args += " -- ";
+        args += PROJECT_DIRECTORY;
         if (test_render)
         {
-            command += " 1";
+            args += " 1";
         }
         else
         {
-            command += " 0";
+            args += " 0";
         }
 
-        Process.Start(SETTINGS.blender_executable, command);
+        // Use Blender to obtain informations about the project
+        Process process = new Process();
+        // Set Blender as executable
+        process.StartInfo.FileName = SETTINGS.blender_executable;
+        // Use the command string as args
+        process.StartInfo.Arguments = args;
+        process.StartInfo.CreateNoWindow = true;
+        // Redirect output to log Blenders output
+        process.StartInfo.RedirectStandardOutput = true;
+        process.Start();
+        // Print and log the output
+        string cmd_output = "";
+        while (!process.HasExited)
+        {
+            cmd_output += process.StandardOutput.ReadToEnd();
+            Console.WriteLine(cmd_output);
+        }
 
         // Read the output
         string json_string = File.ReadAllText(Path.Join(PROJECT_DIRECTORY, "vars.json"));
@@ -530,6 +559,16 @@ Math.Abs
         string json_string = File.ReadAllText(project_file);
         PROJECT = JsonSerializer.Deserialize<Project>(json_string);
         PROJECT_DIRECTORY = Path.Join(SCRIPT_DIRECTORY, PROJECT.id);
+
+        frames_left = new List<int>();
+
+        for (int frame = PROJECT.first_frame; frame < PROJECT.last_frame; frame++)
+        {
+            if (!PROJECT.frames_complete.Contains(frame))
+            {
+                frames_left.Add(frame);
+            }
+        }
     }
     #endregion
 
@@ -562,8 +601,6 @@ Math.Abs
             // Gather informations and add to data object
             new_data.version = VERSION;
             new_data.os = System.Runtime.InteropServices.RuntimeInformation.OSDescription;
-            new_data.cpus.Add(Environment.GetEnvironmentVariable("PROCESSOR_IDENTIFIER"))
-            new_data.gpus.Add(new Direct3D().Adapters[0].Details.Description)
         }
 
         // Save the obtained data
@@ -634,13 +671,13 @@ Math.Abs
     public static dynamic Parse_Bool(string value, bool def = true)
     {
         // If it is a human yes, return computer true
-        if (new List<string>(){"true", "yes", "y", "1"}.Any(s => s.Contains(value.ToLower())))
+        if (new List<string>() { "true", "yes", "y", "1" }.Any(s => s.Contains(value.ToLower())))
         {
             return true;
         }
 
         // If it is a human no, return computer false
-        else if (new List<string>() {"false", "no", "n", "0"}.Any(s => s.Contains(value.ToLower())))
+        else if (new List<string>() { "false", "no", "n", "0" }.Any(s => s.Contains(value.ToLower())))
         {
             return false;
         }
@@ -657,6 +694,19 @@ Math.Abs
     #endregion
 }
 
+public class Server
+{
+    public Server()
+    {
+
+    }
+
+    public void Client_Handler()
+    {
+
+    }
+}
+
 #region Objects
 // Settings object class
 public class Settings
@@ -668,6 +718,7 @@ public class Settings
     public bool use_ftp { get; set; }
     public bool use_zip { get; set; }
     public bool collect_data { get; set; }
+    public bool enable_logging { get; set; }
 }
 
 // Project object class
@@ -676,7 +727,7 @@ public class Project
     public string id { get; set; }
     public float blender_version { get; set; }
     public string full_path_blend { get; set; }
-    public string render_engine { get; set;}
+    public string render_engine { get; set; }
     public string output_file_format { get; set; }
     public bool video_generate { get; set; }
     public int video_fps { get; set; }
@@ -687,6 +738,7 @@ public class Project
     public int video_y { get; set; }
     public int Chunks { get; set; } = 0;
     public float time_per_frame { get; set; }
+    public int ram_use { get; set; } = 0;
     public int first_frame { get; set; }
     public int last_frame { get; set; }
     public int frames_total { get; set; }
@@ -698,7 +750,8 @@ public class Project_Data
 {
     public float blender_version { get; set; }
     public string render_engine { get; set; }
-    public int render_time { get; set; } = 0;
+    public float render_time { get; set; } = 0.0f;
+    public int ram_use { get; set; } = 0;
     public string file_format { get; set; }
     public int first_frame { get; set; }
     public int last_frame { get; set; }
@@ -709,8 +762,8 @@ public class PRF_Data
 {
     public float version { get; set; } = 0.0f;
     public string os { get; set; } = "No data";
-    public List<string> cpus { get; set; } = new List<string>{ "No data" };
-    public List<string> gpus { get; set; } = new List<string>{ "No data" };
+    public List<string> cpus { get; set; } = new List<string> { "No data" };
+    public List<string> gpus { get; set; } = new List<string> { "No data" };
     public int ram { get; set; } = 0;
     public int projects { get; set; } = 0;
 }
