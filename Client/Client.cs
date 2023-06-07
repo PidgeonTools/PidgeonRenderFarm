@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Diagnostics;
 using System.Text.Json;
+using System.IO.Compression;
 
 class Client
 {
@@ -21,7 +22,6 @@ class Client
     public static float VERSION = 1.0f;
     public static Settings SETTINGS;
     public static PRF_Data PRF_DATA;
-    public static Project_Data PROJECT;
     #endregion
 
     // Runs at start
@@ -107,47 +107,190 @@ class Client
 
     public static void Worker()
     {
-        try
+        while (true)
         {
-            IPHostEntry host = Dns.GetHostEntry("localhost");
-            IPAddress ipAddress = host.AddressList[0];
-            IPEndPoint remoteEP = new IPEndPoint(ipAddress, 11000);
-
-            Socket sender = new Socket(ipAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
-
             try
             {
-                // Connect to Remote EndPoint
-                sender.Connect(remoteEP);
+                IPAddress ip_address = IPAddress.Parse(SETTINGS.masters[0].ip);
+                IPEndPoint remote_end_point = new IPEndPoint(ip_address, SETTINGS.masters[0].port);
+                Socket connection = new Socket(ip_address.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
 
-                Console.WriteLine("Socket connected to {0}", sender.RemoteEndPoint.ToString());
+                try
+                {
+                    // Connect to Remote EndPoint
+                    connection.Connect(remote_end_point);
 
-                // Encode the data string into a byte array.
-                byte[] msg = Encoding.ASCII.GetBytes("This is a test<EOF>");
+                    DateTime connection_time = DateTime.Now;
+                    Console.WriteLine("Connected to: " + connection.RemoteEndPoint.ToString() + " @ " + connection_time.ToString("HH:mm:ss"));
+                    Write_Log("Connected to: " + connection.RemoteEndPoint.ToString() + " @ " + connection_time.ToString("HH:mm:ss"));
 
-                // Send the data through the socket.
-                int bytesSent = sender.Send(msg);
+                    Client_Response client_response = new Client_Response();
 
-                // Receive the response from the remote device.
-                byte[] bytes = new byte[1024];
-                int bytesRec = sender.Receive(bytes);
-                Console.WriteLine("Echoed test = {0}",
-                    Encoding.ASCII.GetString(bytes, 0, bytesRec));
+                    client_response.message = "new";
+                    string json_send = JsonSerializer.Serialize(client_response);
+                    byte[] bytes_send = Encoding.UTF8.GetBytes(json_send);
+                    connection.Send(bytes_send);
 
-                // Release the socket.
-                sender.Shutdown(SocketShutdown.Both);
-                sender.Close();
+                    byte[] buffer = new byte[1024];
+                    int received = connection.Receive(buffer);
+                    string json_receive = Encoding.UTF8.GetString(buffer, 0, received);
+                    Master_Response master_response = JsonSerializer.Deserialize<Master_Response>(json_receive);
 
+                    client_response = new Client_Response();
+
+                    PROJECT_DIRECTORY = Path.Join(SCRIPT_DIRECTORY, master_response.id);
+                    string blend_file = Path.Join(PROJECT_DIRECTORY, (master_response.id + ".blend"));
+                    long file_size = new FileInfo(blend_file).Length;
+
+                    if (!File.Exists(blend_file) || file_size != master_response.file_size)
+                    {
+                        client_response.message = "needed";
+                        json_send = JsonSerializer.Serialize(client_response);
+                        bytes_send = Encoding.UTF8.GetBytes(json_send);
+                        connection.Send(bytes_send);
+
+                        string path = Path.Join(PROJECT_DIRECTORY, blend_file);
+                        using (FileStream file_stream = File.Create(path))
+                        {
+                            new NetworkStream(connection).CopyTo(file_stream);
+                        }
+                    }
+
+                    client_response.message = "drop";
+                    json_send = JsonSerializer.Serialize(client_response);
+                    bytes_send = Encoding.UTF8.GetBytes(json_send);
+                    connection.Send(bytes_send);
+
+                    // Release the socket.
+                    connection.Shutdown(SocketShutdown.Both);
+
+                    string args = "-b ";
+                    args += blend_file;
+                    args += " -o ";
+                    args += "//frame_#### ";
+                    args += "-F ";
+                    args += master_response.file_format;
+                    args += " -s ";
+                    args += master_response.first_frame;
+                    args += " -e ";
+                    args += master_response.first_frame;
+                    args += " -a";
+                    if (master_response.render_engine == "CYCLES")
+                    {
+                        args += " --cycles-device ";
+                        args += SETTINGS.render_device;
+                    }
+
+                    // Use Blender to obtain informations about the project
+                    Process process = new Process();
+                    // Set Blender as executable
+                    process.StartInfo.FileName = SETTINGS.blender_executable;
+                    // Use the command string as args
+                    process.StartInfo.Arguments = args;
+                    process.StartInfo.CreateNoWindow = true;
+                    // Redirect output to log Blenders output
+                    process.StartInfo.RedirectStandardOutput = true;
+                    process.Start();
+                    // Print and log the output
+                    string cmd_output = "";
+                    while (!process.HasExited)
+                    {
+                        cmd_output += process.StandardOutput.ReadToEnd();
+                        Console.WriteLine(cmd_output);
+                    }
+
+                    client_response = new Client_Response();
+                    client_response.message = "output";
+                    client_response.files = new List<string>();
+                    client_response.faulty = new List<bool>();
+                    client_response.frames = new List<int>();
+
+                    List<string> paths = new List<string>();
+
+                    for (int frame = master_response.first_frame; frame <= master_response.last_frame; frame++)
+                    {
+                        client_response.frames.Add(frame);
+
+                        string file_name = frame.ToString().PadLeft(4, '0') + "." + master_response.file_format;
+                        client_response.files.Add(file_name);
+                        string path = Path.Join(PROJECT_DIRECTORY, file_name);
+                        paths.Add(path);
+
+                        client_response.faulty.Add(!File.Exists(path));
+                    }
+
+                    string zip_name = master_response.first_frame + "_" + master_response.last_frame + ".zip";
+                    string zip_file = Path.Join(PROJECT_DIRECTORY, zip_name);
+
+                    if (master_response.use_zip)
+                    {
+                        using (ZipArchive archive = ZipFile.Open(zip_file, ZipArchiveMode.Create))
+                        {
+                            foreach (string path in paths)
+                            {
+                                archive.CreateEntryFromFile(path, Path.GetFileName(path));
+                            }
+                        }
+                    }
+
+                    if (master_response.use_ftp)
+                    {
+                        //upload to ftp server
+                    }
+
+                    while (true)
+                    {
+                        try
+                        {
+                            connection.Connect(remote_end_point);
+
+                            json_send = JsonSerializer.Serialize(client_response);
+                            bytes_send = Encoding.UTF8.GetBytes(json_send);
+                            connection.Send(bytes_send);
+
+                            if (client_response.faulty.Contains(false) && !master_response.use_ftp)
+                            {
+                                buffer = new byte[1024];
+                                connection.Receive(buffer);
+
+                                if (master_response.use_zip)
+                                {
+                                    
+
+                                    connection.SendFile(zip_file);
+                                }
+
+                                else
+                                {
+                                    foreach (string path in paths)
+                                    {
+                                        connection.SendFile(path);
+                                    }
+                                }
+                            }
+                        }
+
+                        catch (Exception e)
+                        {
+
+                        }
+                        
+                    }
+                    
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine("Unexpected exception : {0}", e.ToString());
+                    Thread.Sleep(2500);
+                }
             }
             catch (Exception e)
             {
-                Console.WriteLine("Unexpected exception : {0}", e.ToString());
+                Console.WriteLine(e.ToString());
+                Thread.Sleep(5000);
             }
         }
-        catch (Exception e)
-        {
-            Console.WriteLine(e.ToString());
-        }
+        
     }
 
     #region Menu_Display
@@ -297,12 +440,12 @@ class Client
         // Blender Executable
         // Check if the file exsists
         Show_Top_Bar();
-        Console.WriteLine("Where is you blender.exe stored? (It's recommended not to use blender-launcher.exe)");
-        user_input = Console.ReadLine();
+        Console.WriteLine("Where is your blender executable stored? (It's recommended not to use blender-launcher)");
+        user_input = Console.ReadLine().Replace("\"", "");
         while (!File.Exists(user_input))
         {
-            Console.WriteLine("Please input the path to blender.exe (Without '')");
-            user_input = Console.ReadLine();
+            Console.WriteLine("Please input the path to your blender executable");
+            user_input = Console.ReadLine().Replace("\"", "");
         }
         new_settings.blender_executable = user_input;
 
@@ -372,7 +515,7 @@ class Client
         Console.Clear();
 
         // Select allowed render engines
-        new_settings.allowed_engines = Pick_Render_Engines(new_settings.blender_executable, new_settings.enable_logging);
+        (new_settings.allowed_engines, new_settings.blender_version) = Pick_Render_Engines(new_settings.blender_executable, new_settings.enable_logging);
 
         // Keep input
         // Use Menu() to grab user input
@@ -389,7 +532,7 @@ class Client
         // Save the settings
         Save_Settings(new_settings);
     }
-    public static List<string> Pick_Render_Engines(string blender_executable, bool enable_logging)
+    public static (List<string>,string) Pick_Render_Engines(string blender_executable, bool enable_logging)
     {
         // Tell the user why it is taking so long
         Show_Top_Bar();
@@ -421,7 +564,10 @@ class Client
         Write_Log(cmd_output, enable_logging);
         // Split the content of the file into a List
         List<string> engines = new List<string>();
-        foreach (var line in File.ReadLines(Path.Join(SCRIPT_DIRECTORY, "engines.json")))
+        List<string> lines = (List<string>)File.ReadLines(Path.Join(SCRIPT_DIRECTORY, "engines.json"));
+        string version = lines[0];
+        lines.Remove(version);
+        foreach (string line in lines)
         {
             engines.Add(line);
         }
@@ -438,7 +584,7 @@ class Client
         if (selection == items[0])
         {
             // Return all installed engines
-            return engines;
+            return (engines, version);
         }
 
         else if (selection == items[1])
@@ -458,10 +604,10 @@ class Client
                 }
             }
 
-            return picked_engines;
+            return (picked_engines, version);
         }
 
-        return null;
+        return (null, version);
     }
 
     // Save settings based on a new set
@@ -702,6 +848,7 @@ public class Settings
     public float version { get; set; } = 0.0f;
     public List<Master> masters { get; set; } = new List<Master>();
     public string blender_executable { get; set; }
+    public string blender_version { get; set; }
     public string render_device { get; set; }
     public int limit_cpu_threads { get; set; } = 0;
     public int limit_ram_use { get; set; } = 0;
@@ -729,16 +876,31 @@ public class Master
     }
 }
 
-// Project_Data object class
-public class Project_Data
+public class Client_Response
 {
-    public float blender_version { get; set; }
+    public string message { get; set; }
+    public string blender_version { get; set; } = null;
+    public List<string> allowed_engines { get; set; }
+    public int limit_ram_use { get; set; }
+    public float limit_file_size { get; set; }
+    public float limit_time_frame { get; set; }
+    public List<bool> faulty { get; set; }
+    public List<int> frames { get; set; }
+    public List<string> files { get; set; }
+}
+
+public class Master_Response
+{
+    public string message { get; set; }
+    public bool use_ftp { get; set; }
+    public bool use_zip { get; set; }
+    public string id { get; set; }
+    public float file_size { get; set; }
     public string render_engine { get; set; }
-    public float render_time { get; set; } = 0.0f;
-    public int ram_use { get; set; } = 0;
     public string file_format { get; set; }
     public int first_frame { get; set; }
     public int last_frame { get; set; }
+
 }
 
 // PRF_Data object class

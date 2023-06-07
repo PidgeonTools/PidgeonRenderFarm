@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
+using System.IO;
+using System.IO.Compression;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -24,6 +26,8 @@ class Master
     public static PRF_Data PRF_DATA;
     public static Project PROJECT;
     public static List<int> frames_left = new List<int>();
+    private static readonly object frame_lock = new object();
+    private static readonly object done_lock = new object();
     #endregion
 
     // Runs at start
@@ -47,6 +51,19 @@ class Master
         // Main loop start
         Load_Settings();
         Collect_Data();
+
+        if (args.Length != 0)
+        {
+            try
+            {
+                Load_Project_From_String(args[0]);
+            }
+            catch (Exception e)
+            {
+                Write_Log(e.ToString());
+            }
+        }
+        
         Main_Menu();
     }
 
@@ -77,7 +94,18 @@ class Master
 
             else if (selection == items[1])
             {
+                // PRFP file
+                // Let user input a valid PRF project file
+                Show_Top_Bar();
+                Console.WriteLine("Where is your PidgeonRenderFarm project stored?");
+                string user_input = Console.ReadLine().Replace("\"", "");
+                while (!File.Exists(user_input) && !user_input.EndsWith(".prfp"))
+                {
+                    Console.WriteLine("Please input the path to your .prfp");
+                    user_input = Console.ReadLine().Replace("\"", "");
+                }
 
+                Load_Project(user_input);
             }
 
             else if (selection == items[2])
@@ -116,52 +144,261 @@ class Master
     public static void Render_Project()
     {
         IPHostEntry host = Dns.GetHostEntry("localhost");
-        IPAddress ipAddress = host.AddressList[0];
-        IPEndPoint localEndPoint = new IPEndPoint(ipAddress, 11000);
+        IPAddress ip_address = host.AddressList[0];
+        IPEndPoint local_end_point = new IPEndPoint(ip_address, SETTINGS.port);
 
         try
         {
 
             // Create a Socket that will use Tcp protocol
-            Socket listener = new Socket(ipAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+            Socket listener = new(ip_address.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
             // A Socket must be associated with an endpoint using the Bind method
-            listener.Bind(localEndPoint);
+            listener.Bind(local_end_point);
             // Specify how many requests a Socket can listen before it gives Server busy response.
             // We will listen 10 requests at a time
             listener.Listen(10);
 
-            Console.WriteLine("Waiting for a connection...");
-            Socket handler = listener.Accept();
+            Console.WriteLine("Waiting for Clients...");
 
-            // Incoming data from the client.
-            string data = "";
-            byte[] bytes;
-
-            while (true)
+            while (Get_Frames_Done().Count < PROJECT.frames_total)
             {
-                bytes = new byte[1024];
-                int bytesRec = handler.Receive(bytes);
-                data += Encoding.ASCII.GetString(bytes, 0, bytesRec);
-                if (data.IndexOf("<EOF>") > -1)
+                try
                 {
-                    break;
+                    Socket handler = listener.Accept();
+
+                    DateTime connection_time = DateTime.Now;
+                    Console.WriteLine("New connection: " + handler.RemoteEndPoint.ToString() + " @ " + connection_time.ToString("HH:mm:ss"));
+                    Write_Log("New connection: " + handler.RemoteEndPoint.ToString() + " @ " + connection_time.ToString("HH:mm:ss"));
+
+                    Client_Handler(handler);
+                }
+
+                catch (Exception e)
+                {
+                    Console.WriteLine("An error occurred, trying to continue anyways... (see the log files for more details)");
+                    Write_Log(e.ToString());
                 }
             }
-
-            Console.WriteLine("Text received : {0}", data);
-
-            byte[] msg = Encoding.ASCII.GetBytes(data);
-            handler.Send(msg);
-            handler.Shutdown(SocketShutdown.Both);
-            handler.Close();
         }
         catch (Exception e)
         {
             Console.WriteLine(e.ToString());
+            Write_Log(e.ToString());
         }
 
         Console.WriteLine("\n Press any key to continue...");
         Console.ReadKey();
+    }
+
+    public static void Client_Handler(Socket client)
+    {
+        try
+        {
+            byte[] buffer = new byte[1024];
+            int received = client.Receive(buffer);
+            string json_receive = Encoding.UTF8.GetString(buffer, 0, received);
+            Client_Response client_response = JsonSerializer.Deserialize<Client_Response>(json_receive);
+
+            Master_Response master_response = new Master_Response();
+            string json_send;
+
+            if (client_response.message == "new")
+            {
+                List<int> frames = Aquire_Frames(client_response);
+
+                master_response.message = "NAN";
+
+                if (frames.Count != 0)
+                {
+                    master_response.message = "here";
+                    master_response.id = PROJECT.id;
+                    master_response.file_size = new FileInfo(PROJECT.full_path_blend).Length;
+                    master_response.first_frame = frames[0];
+                    master_response.last_frame = frames[-1];
+                    master_response.render_engine = PROJECT.render_engine;
+                    master_response.render_engine = PROJECT.output_file_format;
+                }
+
+                json_send = JsonSerializer.Serialize(master_response);
+                byte[] bytes_send = Encoding.UTF8.GetBytes(json_send);
+                client.Send(bytes_send);
+
+                buffer = new byte[1024];
+                received = client.Receive(buffer);
+                json_receive = Encoding.UTF8.GetString(buffer, 0, received);
+                client_response = JsonSerializer.Deserialize<Client_Response>(json_receive);
+
+                if (client_response.message == "needed")
+                {
+                    client.SendFile(PROJECT.full_path_blend);
+                }
+            }
+
+            else if (client_response.message == "output")
+            {
+                if (!client_response.faulty.Contains(false))
+                {
+                    Add_Frames(client_response.frames);
+                }
+
+                else
+                {
+                    byte[] bytes_send = Encoding.UTF8.GetBytes("drop");
+                    client.Send(bytes_send);
+
+                    if (SETTINGS.use_zip)
+                    {
+                        string file = client_response.frames[0] + "_" + client_response.frames[-1] + ".zip";
+                        string path = Path.Join(PROJECT_DIRECTORY, file);
+                        using (FileStream file_stream = File.Create(path))
+                        {
+                            new NetworkStream(client).CopyTo(file_stream);
+                        }
+
+                        ZipFile.ExtractToDirectory(file, PROJECT_DIRECTORY);
+                    }
+
+                    else
+                    {
+                        foreach (string file in client_response.files)
+                        {
+                            string path = Path.Join(PROJECT_DIRECTORY, file);
+                            using (FileStream file_stream = File.Create(path))
+                            {
+                                new NetworkStream(client).CopyTo(file_stream);
+                            }
+                        }
+                    }
+
+                    List<int> done = new List<int>();
+
+                    foreach (int frame in client_response.frames)
+                    {
+                        string file = "";
+
+                        if (File.Exists(Path.Join(PROJECT_DIRECTORY, file)))
+                        {
+                            done.Add(frame);
+                        }
+                    }
+
+                    Add_Frames_Done(done);
+                }
+            }
+
+            else if (client_response.message == "ping")
+            {
+                master_response.message = "pong";
+                json_send = JsonSerializer.Serialize(master_response);
+                byte[] bytes_send = Encoding.UTF8.GetBytes(json_send);
+                client.Send(bytes_send);
+            }
+
+            client.Shutdown(SocketShutdown.Both);
+            client.Close();
+        }
+
+        catch (Exception e)
+        {
+            Console.WriteLine("An error occurred, trying to continue anyways... (see the log files for more details)");
+            Write_Log(e.ToString());
+        }
+    }
+
+    public static void Add_Frames(List<int> frames)
+    {
+        lock (frame_lock)
+        {
+            foreach (int frame in frames)
+            {
+                frames_left.Add(frame);
+            }
+        }
+    }
+    public static List<int> Get_Frames()
+    {
+        lock (frame_lock)
+        {
+            return frames_left;
+        }
+    }
+    public static List<int> Aquire_Frames(Client_Response requirements)
+    {
+        List<int> empty_list = new List<int>{};
+
+        if (requirements.blender_version != PROJECT.blender_version)
+        {
+            return empty_list;
+        }
+
+        if (!requirements.allowed_engines.Contains(PROJECT.render_engine))
+        {
+            return empty_list;
+        }
+
+        if (requirements.limit_time_frame != 0)
+        {
+            if (requirements.limit_time_frame < PROJECT.time_per_frame)
+            {
+                return empty_list;
+            }
+        }
+
+        if (requirements.limit_ram_use != 0)
+        {
+            if (requirements.limit_ram_use < PROJECT.ram_use)
+            {
+                return empty_list;
+            }
+        }
+
+        lock (frame_lock)
+        {
+            List<int> frames_picked = new List<int>();
+            List<int> frames_left_copy = frames_left;
+            int first_frame = frames_left_copy[0];
+
+            for (int chunk = 0; chunk < PROJECT.chunks; chunk++)
+            {
+                if (frames_left.Count == 0)
+                {
+                    return frames_picked;
+                }
+
+                if (frames_left_copy.Contains(first_frame + chunk))
+                {
+                    frames_left.Remove(first_frame + chunk);
+                    frames_picked.Add(first_frame + chunk);
+                }
+
+                else
+                {
+                    return frames_picked;
+                }
+            }
+
+            return empty_list;
+        }
+    }
+
+    public static void Add_Frames_Done(List<int> frames)
+    {
+        lock (done_lock)
+        {
+            foreach (int frame in frames)
+            {
+                PROJECT.frames_complete.Add(frame);
+            }
+
+            Save_Project();
+        }
+    }
+    public static List<int> Get_Frames_Done()
+    {
+        lock (done_lock)
+        {
+            return PROJECT.frames_complete;
+        }
     }
 
     #region Menu_Display
@@ -300,12 +537,12 @@ class Master
         // Blender Executable
         // Check if the file exsists
         Show_Top_Bar();
-        Console.WriteLine("Where is you blender.exe stored? (It's recommended not to use blender-launcher.exe)");
-        user_input = Console.ReadLine();
+        Console.WriteLine("Where is your blender executable stored? (It's recommended not to use blender-launcher)");
+        user_input = Console.ReadLine().Replace("\"", "");
         while (!File.Exists(user_input))
         {
-            Console.WriteLine("Please input the path to blender.exe (Without '')");
-            user_input = Console.ReadLine();
+            Console.WriteLine("Please input the path to your blender executable");
+            user_input = Console.ReadLine().Replace("\"", "");
         }
         new_settings.blender_executable = user_input;
 
@@ -380,12 +617,12 @@ class Master
         // Blend file
         // Let user input a valid Blender project file
         Show_Top_Bar();
-        Console.WriteLine("Where .blend stored? (Be sure to actually use a .blend)");
-        string user_input = Console.ReadLine();
+        Console.WriteLine("Where is your .blend stored? (Be sure to actually use a .blend)");
+        string user_input = Console.ReadLine().Replace("\"", "");
         while (!File.Exists(user_input) && !user_input.EndsWith(".blend"))
         {
-            Console.WriteLine("Please input the path to your .blend (Without '')");
-            user_input = Console.ReadLine();
+            Console.WriteLine("Please input the path to your .blend");
+            user_input = Console.ReadLine().Replace("\"", "");
         }
         new_project.full_path_blend = user_input;
 
@@ -461,7 +698,7 @@ class Master
                 Console.WriteLine("Please input a whole number");
                 user_input = Console.ReadLine();
             }
-            new_project.video_y = Math.Abs(int.Parse(user_input));
+            new_project.chunks = Math.Abs(int.Parse(user_input));
             Console.Clear();
         }
 
@@ -543,6 +780,16 @@ class Master
         File.WriteAllText(Path.Combine(PROJECT_DIRECTORY, PROJECT.id), jsonString);
     }
 
+    public static void Save_Project()
+    {
+        // Convert object to json
+        var options = new JsonSerializerOptions { WriteIndented = true };
+        string jsonString = JsonSerializer.Serialize(PROJECT, options);
+
+        // Write to file
+        File.WriteAllText(Path.Combine(PROJECT_DIRECTORY, PROJECT.id), jsonString);
+    }
+
     // Load a project
     public static void Load_Project(string project_file)
     {
@@ -568,6 +815,41 @@ class Master
             {
                 frames_left.Add(frame);
             }
+        }
+    }
+    // Load a project from a given json string
+    public static void Load_Project_From_String(string json_string)
+    {
+        try
+        {
+            // Convert json to object
+            // Update global project object
+            // Update global project directory
+            PROJECT = JsonSerializer.Deserialize<Project>(json_string);
+            // +1 on data file
+            Save_Data();
+            // Generate ID based on project number
+            PROJECT.id = PRF_DATA.projects.ToString();
+            PROJECT_DIRECTORY = Path.Join(SCRIPT_DIRECTORY, PROJECT.id);
+            Directory.CreateDirectory(PROJECT_DIRECTORY);
+
+            PROJECT.frames_complete = new List<int>();
+
+            frames_left = new List<int>();
+
+            for (int frame = PROJECT.first_frame; frame < PROJECT.last_frame; frame++)
+            {
+                if (!PROJECT.frames_complete.Contains(frame))
+                {
+                    frames_left.Add(frame);
+                }
+            }
+
+            Save_Project();
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e.ToString());
         }
     }
     #endregion
@@ -694,19 +976,6 @@ class Master
     #endregion
 }
 
-public class Server
-{
-    public Server()
-    {
-
-    }
-
-    public void Client_Handler()
-    {
-
-    }
-}
-
 #region Objects
 // Settings object class
 public class Settings
@@ -725,7 +994,7 @@ public class Settings
 public class Project
 {
     public string id { get; set; }
-    public float blender_version { get; set; }
+    public string blender_version { get; set; }
     public string full_path_blend { get; set; }
     public string render_engine { get; set; }
     public string output_file_format { get; set; }
@@ -736,7 +1005,7 @@ public class Project
     public bool video_resize { get; set; }
     public int video_x { get; set; }
     public int video_y { get; set; }
-    public int Chunks { get; set; } = 0;
+    public int chunks { get; set; } = 0;
     public float time_per_frame { get; set; }
     public int ram_use { get; set; } = 0;
     public int first_frame { get; set; }
@@ -745,10 +1014,37 @@ public class Project
     public List<int> frames_complete { get; set; } = new List<int>();
 }
 
+public class Client_Response
+{
+    public string message { get; set; }
+    public string blender_version { get; set; }
+    public List<string> allowed_engines { get; set; }
+    public int limit_ram_use { get; set; }
+    public float limit_file_size { get; set; }
+    public float limit_time_frame { get; set; }
+    public List<bool> faulty { get; set; }
+    public List<int> frames { get; set; }
+    public List<string> files { get; set; }
+}
+
+public class Master_Response
+{
+    public string message { get; set; }
+    public bool use_ftp { get; set; }
+    public bool use_zip { get; set; }
+    public string id { get; set; }
+    public float file_size { get; set; }
+    public string render_engine { get; set; }
+    public string file_format { get; set; }
+    public int first_frame { get; set; }
+    public int last_frame { get; set; }
+
+}
+
 // Project_Data object class
 public class Project_Data
 {
-    public float blender_version { get; set; }
+    public string blender_version { get; set; }
     public string render_engine { get; set; }
     public float render_time { get; set; } = 0.0f;
     public int ram_use { get; set; } = 0;

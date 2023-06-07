@@ -8,7 +8,7 @@ argv = sys.argv
 index = argv.index("--") + 1
 argv = argv[index:]
 
-string = ""
+string = bpy.app.version_string + "\n"
 string += "BLENDER_EEVEE\n"
 string += "BLENDER_WORKBENCH\n"
 
