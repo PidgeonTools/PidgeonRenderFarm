@@ -143,7 +143,8 @@ class Master
 
     public static void Render_Project()
     {
-        IPHostEntry host = Dns.GetHostEntry("localhost");
+        //IPHostEntry host = Dns.GetHostEntry("localhost");
+        IPHostEntry host = Dns.GetHostEntry(Dns.GetHostName());
         IPAddress ip_address = host.AddressList[0];
         IPEndPoint local_end_point = new IPEndPoint(ip_address, SETTINGS.port);
 
@@ -556,7 +557,7 @@ class Master
 
         // Use ZIP
         // Use Menu() to grab user input
-        new_settings.use_zip = Parse_Bool(Menu(basic_bool, new List<string> { "Zip/compress files before distributing? (might save some bandwitdh at the cost of image quality)" }));
+        //new_settings.use_zip = Parse_Bool(Menu(basic_bool, new List<string> { "Zip/compress files before distributing? (might save some bandwitdh at the cost of image quality)" }));
 
         // Data collection
         // Use Menu() to grab user input
@@ -609,6 +610,8 @@ class Master
         // Create empty project
         Project new_project = new Project();
 
+        List<string> basic_bool = new List<string> { "Yes", "No" };
+
         // +1 on data file
         Save_Data();
         // Generate ID based on project number
@@ -626,14 +629,19 @@ class Master
         }
         new_project.full_path_blend = user_input;
 
+        // Use SuperFastRender
+        // Use Menu() to grab user input
+        bool use_sfr = Parse_Bool(Menu(basic_bool, new List<string> { "Use SuperFastRender (with default settings) to optimize the rendering process?" }));
+
+
         // Render test frame (for time)
         // Use Menu() to grab user input
-        bool test_render = Parse_Bool(Menu(new List<string> { "Yes", "No" },
+        bool test_render = Parse_Bool(Menu(basic_bool,
                                            new List<string> { "Render a test frame? (Will take some time, for client option 'Maximum time per frame')" }));
 
         // Generate a video file
         // Use Menu() to grab user input
-        new_project.video_generate = Parse_Bool(Menu(new List<string> { "Yes", "No" },
+        new_project.video_generate = Parse_Bool(Menu(basic_bool,
                                                      new List<string> { "Generate a video file? (MP4-Format, FFMPEG has to be installed!)" }));
 
         // Only required if we generate a video
@@ -714,6 +722,14 @@ class Master
         args += "BPY.py";
         args += " -- ";
         args += PROJECT_DIRECTORY;
+        if (use_sfr)
+        {
+            args += " 1";
+        }
+        else
+        {
+            args += " 0";
+        }
         if (test_render)
         {
             args += " 1";

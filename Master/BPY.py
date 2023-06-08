@@ -25,8 +25,18 @@ json_object = {
 if json_object["file_format"] in ["AVI_JPEG", "AVI_RAW", "FFMPEG"]:
     json_object["file_format"] = "PNG"
 
-# If render time test wanted, test it
+# If opimization with SuperFastRender wanted, do it with default settings
 if argv[1] == "1":
+    # Try to call SFR
+    try:
+        bpy.ops.render.superfastrender_benchmark()
+        # Save the new settings
+        bpy.ops.wm.save_as_mainfile(filepath=bpy.data.filepath)
+    except AttributeError:
+       print("SuperFastRender is NOT installed!")
+
+# If render time test wanted, test it
+if argv[2] == "1":
     startTime = time.time()
     bpy.ops.render.render()
     # Pray it is compatible with C# float...
