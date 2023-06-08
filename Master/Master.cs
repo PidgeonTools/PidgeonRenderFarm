@@ -52,6 +52,7 @@ class Master
         Load_Settings();
         Collect_Data();
 
+        // If provided with arguments -> load them as project
         if (args.Length != 0)
         {
             try
@@ -60,13 +61,15 @@ class Master
             }
             catch (Exception e)
             {
+                // Log errors
                 Write_Log(e.ToString());
             }
         }
-        
+
+        // If it fails, just continue to the main menu
         Main_Menu();
     }
-
+    
     public static void Main_Menu()
     {
         // Create list with all options and hand it to Menu()
@@ -89,6 +92,7 @@ class Master
             // Compare selection with options and execute function
             if (selection == items[0])
             {
+                // Create a new project
                 Project_Setup();
             }
 
@@ -105,6 +109,7 @@ class Master
                     user_input = Console.ReadLine().Replace("\"", "");
                 }
 
+                // Load the project from the given file
                 Load_Project(user_input);
             }
 
@@ -118,19 +123,22 @@ class Master
             {
                 // Open documentation on Github.com
                 Process.Start(new ProcessStartInfo("https://github.com/PidgeonTools/PidgeonRenderFarm") { UseShellExecute = true });
-                Main_Menu();
             }
 
             else if (selection == items[4])
             {
                 // Open Discord invite in browser
-                Process.Start(new ProcessStartInfo("https://discord.gg/cnFdGQP") { UseShellExecute = true });
-                Main_Menu();
+                // https://discord.gg/cnFdGQP
+                Process.Start(new ProcessStartInfo("https://discord.gg/pidgeon-tools-blender-3d-697931587387392010") { UseShellExecute = true });
             }
 
             else if (selection == items[5])
             {
-
+                // Tell the user it is actually out of order
+                Console.WriteLine("This option is currently not aviable...");
+                Console.WriteLine("Press any button to return");
+                // User can press any button
+                Console.ReadKey();
             }
 
             else
@@ -143,39 +151,42 @@ class Master
 
     public static void Render_Project()
     {
-        //IPHostEntry host = Dns.GetHostEntry("localhost");
+        // Obtain the ip adress of the current machine
         IPHostEntry host = Dns.GetHostEntry(Dns.GetHostName());
         IPAddress ip_address = host.AddressList[0];
+        // Create a end point with given IP and port
         IPEndPoint local_end_point = new IPEndPoint(ip_address, SETTINGS.port);
 
         try
         {
-
-            // Create a Socket that will use Tcp protocol
+            // Socket for clients initial connection (TCP)
             Socket listener = new(ip_address.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
-            // A Socket must be associated with an endpoint using the Bind method
+            // Bind the end point to the new socket
             listener.Bind(local_end_point);
-            // Specify how many requests a Socket can listen before it gives Server busy response.
-            // We will listen 10 requests at a time
+            // Set a maximum of 10 connected clients
             listener.Listen(10);
 
             Console.WriteLine("Waiting for Clients...");
 
+            // While there are unrendered frames await clients
             while (Get_Frames_Done().Count < PROJECT.frames_total)
             {
                 try
                 {
+                    // Accept a new connection
                     Socket handler = listener.Accept();
 
+                    // Log the time and ip of the Client connection
                     DateTime connection_time = DateTime.Now;
                     Console.WriteLine("New connection: " + handler.RemoteEndPoint.ToString() + " @ " + connection_time.ToString("HH:mm:ss"));
                     Write_Log("New connection: " + handler.RemoteEndPoint.ToString() + " @ " + connection_time.ToString("HH:mm:ss"));
 
+                    // Continue in the Client_Handler()
                     Client_Handler(handler);
                 }
-
                 catch (Exception e)
                 {
+                    // Log errors
                     Console.WriteLine("An error occurred, trying to continue anyways... (see the log files for more details)");
                     Write_Log(e.ToString());
                 }
@@ -183,11 +194,12 @@ class Master
         }
         catch (Exception e)
         {
+            // Log errors
             Console.WriteLine(e.ToString());
             Write_Log(e.ToString());
         }
 
-        Console.WriteLine("\n Press any key to continue...");
+        Console.WriteLine("Rendering done! You can go back to the main menu by press any key");
         Console.ReadKey();
     }
 
@@ -195,20 +207,27 @@ class Master
     {
         try
         {
+            // Receive message from client
             byte[] buffer = new byte[1024];
             int received = client.Receive(buffer);
+            // Convert bytes to string
             string json_receive = Encoding.UTF8.GetString(buffer, 0, received);
+            // Convert string to an object
             Client_Response client_response = JsonSerializer.Deserialize<Client_Response>(json_receive);
 
+            // Prepare a new response and string
             Master_Response master_response = new Master_Response();
             string json_send;
 
+            // Find out what the client wants
             if (client_response.message == "new")
             {
+                // If Client wants work, check if frames are left
                 List<int> frames = Aquire_Frames(client_response);
 
                 master_response.message = "NAN";
 
+                // If frames left, then provide Client with information about the project
                 if (frames.Count != 0)
                 {
                     master_response.message = "here";
@@ -220,15 +239,22 @@ class Master
                     master_response.render_engine = PROJECT.output_file_format;
                 }
 
+                // Convert the object to string
                 json_send = JsonSerializer.Serialize(master_response);
+                // Convert string to bytes
                 byte[] bytes_send = Encoding.UTF8.GetBytes(json_send);
+                // Send bytes to client
                 client.Send(bytes_send);
 
+                // Receive message from client
                 buffer = new byte[1024];
                 received = client.Receive(buffer);
+                // Convert bytes to string
                 json_receive = Encoding.UTF8.GetString(buffer, 0, received);
+                // Convert string to an object
                 client_response = JsonSerializer.Deserialize<Client_Response>(json_receive);
 
+                // If the client doesn't have the .Blend, send it to him
                 if (client_response.message == "needed")
                 {
                     client.SendFile(PROJECT.full_path_blend);
@@ -237,6 +263,9 @@ class Master
 
             else if (client_response.message == "output")
             {
+                // If Client is done rendering execute this
+                // Check if Clients work is any good
+                // If it isn't add his frames back
                 if (!client_response.faulty.Contains(false))
                 {
                     Add_Frames(client_response.frames);
@@ -244,26 +273,35 @@ class Master
 
                 else
                 {
+                    // Send a message to the Client to syncronize
                     byte[] bytes_send = Encoding.UTF8.GetBytes("drop");
                     client.Send(bytes_send);
 
+                    // If files are compressed to zip
                     if (SETTINGS.use_zip)
                     {
+                        // Generate a file name
                         string file = client_response.frames[0] + "_" + client_response.frames[-1] + ".zip";
+                        // Generate a path for the file
                         string path = Path.Join(PROJECT_DIRECTORY, file);
+                        // Download the file into the path
                         using (FileStream file_stream = File.Create(path))
                         {
                             new NetworkStream(client).CopyTo(file_stream);
                         }
 
+                        // Extract the contents
                         ZipFile.ExtractToDirectory(file, PROJECT_DIRECTORY);
                     }
 
                     else
                     {
+                        // Download frames one by one
                         foreach (string file in client_response.files)
                         {
+                            // Generate a path for the file
                             string path = Path.Join(PROJECT_DIRECTORY, file);
+                            // Download the file into the path
                             using (FileStream file_stream = File.Create(path))
                             {
                                 new NetworkStream(client).CopyTo(file_stream);
@@ -271,72 +309,97 @@ class Master
                         }
                     }
 
+                    // Initialize list for checking "good" frames
                     List<int> done = new List<int>();
 
-                    foreach (int frame in client_response.frames)
+                    // Check for every frame
+                    foreach (string file in client_response.files)
                     {
-                        string file = "";
-
+                        // If the file exsists add it to list
                         if (File.Exists(Path.Join(PROJECT_DIRECTORY, file)))
                         {
-                            done.Add(frame);
+                            // Index for every file and the frame is the same,
+                            // so use position of file for the frame
+                            done.Add(client_response.frames[client_response.files.IndexOf(file)]);
                         }
                     }
 
+                    // Append the completed frames
                     Add_Frames_Done(done);
                 }
             }
 
             else if (client_response.message == "ping")
             {
+                // If Client is pinging master
+                // Return "pong"
                 master_response.message = "pong";
+                // Convert the object to string
                 json_send = JsonSerializer.Serialize(master_response);
+                // Convert string to bytes
                 byte[] bytes_send = Encoding.UTF8.GetBytes(json_send);
+
+
                 client.Send(bytes_send);
             }
 
+            // Cut the connection
             client.Shutdown(SocketShutdown.Both);
             client.Close();
         }
 
         catch (Exception e)
         {
+            // Log errors
             Console.WriteLine("An error occurred, trying to continue anyways... (see the log files for more details)");
             Write_Log(e.ToString());
         }
     }
-
+    // Re-add frames to the frames remaining
     public static void Add_Frames(List<int> frames)
     {
+        // Make sure to only change a thing at once
         lock (frame_lock)
         {
+            // Append all frames from list
             foreach (int frame in frames)
             {
                 frames_left.Add(frame);
             }
         }
     }
+    // Get the frames currently left
     public static List<int> Get_Frames()
     {
+        // Make sure to only change a thing at once
+        // Return the frames left
         lock (frame_lock)
         {
             return frames_left;
         }
     }
+    // Aquire frames for the Client
     public static List<int> Aquire_Frames(Client_Response requirements)
     {
+        // Have an empty list ready
         List<int> empty_list = new List<int>{};
 
+        // If Client Blender version does not match
+        // Don't give him frames
         if (requirements.blender_version != PROJECT.blender_version)
         {
             return empty_list;
         }
 
+        // If Client is not allowed to use engine
+        // Don't give him frames
         if (!requirements.allowed_engines.Contains(PROJECT.render_engine))
         {
             return empty_list;
         }
 
+        // If Client doesn't allow for as much time
+        // Don't give him frames
         if (requirements.limit_time_frame != 0)
         {
             if (requirements.limit_time_frame < PROJECT.time_per_frame)
@@ -345,6 +408,8 @@ class Master
             }
         }
 
+        // If Client doesn't want to use as much RAM
+        // Don't give him frames
         if (requirements.limit_ram_use != 0)
         {
             if (requirements.limit_ram_use < PROJECT.ram_use)
@@ -353,37 +418,50 @@ class Master
             }
         }
 
+        // Make sure to only change a thing at once
         lock (frame_lock)
         {
+            // Create a list with frames for Client
             List<int> frames_picked = new List<int>();
+            // Copy the frames_left (avoid problems with itterating)
             List<int> frames_left_copy = frames_left;
-            int first_frame = frames_left_copy[0];
+            // Set the first frame to the first frame left
+            int first_frame = frames_left_copy.Min();
 
+            // Itterate as long as we are within the chunk size
             for (int chunk = 0; chunk < PROJECT.chunks; chunk++)
             {
+                // If there are no frames left, return the picked ones
                 if (frames_left.Count == 0)
                 {
                     return frames_picked;
                 }
 
+                // If out frame is left, add it to the picked frames
+                // and remove it from the frames left
                 if (frames_left_copy.Contains(first_frame + chunk))
                 {
                     frames_left.Remove(first_frame + chunk);
                     frames_picked.Add(first_frame + chunk);
                 }
 
+                // If there is not another continous frames
+                // return the picked ones
                 else
                 {
                     return frames_picked;
                 }
             }
 
+            // Fail safe
             return empty_list;
         }
     }
 
+    // Add a completed frame
     public static void Add_Frames_Done(List<int> frames)
     {
+        // Make sure to only change a thing at once
         lock (done_lock)
         {
             foreach (int frame in frames)
@@ -394,8 +472,10 @@ class Master
             Save_Project();
         }
     }
+    // Get the frames done
     public static List<int> Get_Frames_Done()
     {
+        // Make sure to only change a thing at once
         lock (done_lock)
         {
             return PROJECT.frames_complete;
@@ -740,6 +820,7 @@ class Master
         }
 
         // Use Blender to obtain informations about the project
+        // additionally use SFR if selected
         Process process = new Process();
         // Set Blender as executable
         process.StartInfo.FileName = SETTINGS.blender_executable;
@@ -780,6 +861,7 @@ class Master
         Save_Project(new_project);
 
         // Start rendering
+        Render_Project();
     }
 
     // Save the project
@@ -793,9 +875,9 @@ class Master
         string jsonString = JsonSerializer.Serialize(PROJECT, options);
 
         // Write to file
-        File.WriteAllText(Path.Combine(PROJECT_DIRECTORY, PROJECT.id), jsonString);
+        File.WriteAllText(Path.Combine(PROJECT_DIRECTORY, PROJECT.id + PROJECT_EXTENSION), jsonString);
     }
-
+    // Save the current PROJECT
     public static void Save_Project()
     {
         // Convert object to json
@@ -803,7 +885,7 @@ class Master
         string jsonString = JsonSerializer.Serialize(PROJECT, options);
 
         // Write to file
-        File.WriteAllText(Path.Combine(PROJECT_DIRECTORY, PROJECT.id), jsonString);
+        File.WriteAllText(Path.Combine(PROJECT_DIRECTORY, PROJECT.id + PROJECT_EXTENSION), jsonString);
     }
 
     // Load a project
@@ -823,8 +905,8 @@ class Master
         PROJECT = JsonSerializer.Deserialize<Project>(json_string);
         PROJECT_DIRECTORY = Path.Join(SCRIPT_DIRECTORY, PROJECT.id);
 
+        // Add all frames left to render
         frames_left = new List<int>();
-
         for (int frame = PROJECT.first_frame; frame < PROJECT.last_frame; frame++)
         {
             if (!PROJECT.frames_complete.Contains(frame))
@@ -846,13 +928,15 @@ class Master
             Save_Data();
             // Generate ID based on project number
             PROJECT.id = PRF_DATA.projects.ToString();
+            // Use ID to create a directory for the preoject
             PROJECT_DIRECTORY = Path.Join(SCRIPT_DIRECTORY, PROJECT.id);
             Directory.CreateDirectory(PROJECT_DIRECTORY);
 
+            // When passing from SFR we won't have frames rendered
             PROJECT.frames_complete = new List<int>();
 
+            // Add all frames left to render
             frames_left = new List<int>();
-
             for (int frame = PROJECT.first_frame; frame < PROJECT.last_frame; frame++)
             {
                 if (!PROJECT.frames_complete.Contains(frame))
@@ -861,11 +945,14 @@ class Master
                 }
             }
 
+            // Save the project
             Save_Project();
         }
         catch (Exception e)
         {
+            // Log errors
             Console.WriteLine(e.ToString());
+            Write_Log(e.ToString());
         }
     }
     #endregion
@@ -874,17 +961,21 @@ class Master
     // Write text to log file
     public static void Write_Log(string content)
     {
-        // Make sure file exsists
-        if (!File.Exists(LOGS_FILE))
+        // Only log stuff if the users allows it
+        if (SETTINGS.enable_logging)
         {
-            File.Create(LOGS_FILE).Close();
+            // Make sure file exsists
+            if (!File.Exists(LOGS_FILE))
+            {
+                File.Create(LOGS_FILE).Close();
+            }
+
+            // Append line break
+            content += Environment.NewLine;
+
+            // Append new line to file
+            File.AppendAllText(LOGS_FILE, content);
         }
-
-        // Append line break
-        content += Environment.NewLine;
-
-        // Append new line to file
-        File.AppendAllText(LOGS_FILE, content);
     }
 
     // Collect system data
@@ -1030,6 +1121,7 @@ public class Project
     public List<int> frames_complete { get; set; } = new List<int>();
 }
 
+// Communication from Client
 public class Client_Response
 {
     public string message { get; set; }
@@ -1043,6 +1135,7 @@ public class Client_Response
     public List<string> files { get; set; }
 }
 
+// Communication to Client
 public class Master_Response
 {
     public string message { get; set; }
