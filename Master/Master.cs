@@ -1139,7 +1139,7 @@ public class Client_Response
 public class Master_Response
 {
     public string message { get; set; }
-    public bool use_ftp { get; set; }
+    public bool use_ftp { get; set; } = false;
     public bool use_zip { get; set; }
     public string id { get; set; }
     public float file_size { get; set; }
