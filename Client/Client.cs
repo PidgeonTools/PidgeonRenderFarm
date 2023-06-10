@@ -138,6 +138,10 @@ class Client
 
                     // Request a job
                     client_response.message = "new";
+                    client_response.blender_version = SETTINGS.blender_version;
+                    client_response.allowed_engines = SETTINGS.allowed_engines;
+                    client_response.limit_ram_use = SETTINGS.limit_ram_use;
+                    client_response.limit_time_frame = SETTINGS.limit_ram_use;
                     // Convert the object to string
                     string json_send = JsonSerializer.Serialize(client_response);
                     // Convert string to bytes
@@ -153,10 +157,18 @@ class Client
                     // Convert string to an object
                     Master_Response master_response = JsonSerializer.Deserialize<Master_Response>(json_receive);
 
+                    if (master_response.message == "NAN")
+                    {
+                        Console.WriteLine("No new job aviable");
+                        Thread.Sleep(10000);
+                        continue;
+                    }
+
                     // Prepare request
                     client_response = new Client_Response();
 
-                    PROJECT_DIRECTORY = Path.Join(SCRIPT_DIRECTORY, master_response.id);
+                    PROJECT_DIRECTORY = Path.Join(SCRIPT_DIRECTORY, master_response.id.ToString());
+                    Console.WriteLine(PROJECT_DIRECTORY);
 
                     // Check if the directory exsists
                     if (!Directory.Exists(PROJECT_DIRECTORY))
@@ -168,7 +180,12 @@ class Client
                     // Generate .blend file name
                     string blend_file = Path.Join(PROJECT_DIRECTORY, (master_response.id + ".blend"));
                     // grab it's size
-                    long file_size = new FileInfo(blend_file).Length;
+                    long file_size = 0;
+                    try
+                    {
+                        file_size = new FileInfo(blend_file).Length;
+                    }
+                    catch { }
 
                     // Compare if out file is the same as the Master's
                     if (!File.Exists(blend_file) || file_size != master_response.file_size)
@@ -204,6 +221,7 @@ class Client
 
                     // Cut the connection
                     connection.Shutdown(SocketShutdown.Both);
+                    connection.Close();
 
                     // Prepare Blender arguments
                     // Hide window
@@ -212,16 +230,17 @@ class Client
                     args += blend_file;
                     // Set the file name format
                     args += " -o ";
-                    args += "//frame_#### ";
+                    args += Path.Join(PROJECT_DIRECTORY, "frame_####");
+                    //args += "//frame_#### ";
                     // Set the file format
-                    args += "-F ";
-                    args += master_response.file_format;
+                    //args += "-F ";
+                    //args += master_response.file_format;
                     // Set the first frame
                     args += " -s ";
                     args += master_response.first_frame;
                     // Set the last frame
                     args += " -e ";
-                    args += master_response.first_frame;
+                    args += master_response.last_frame;
                     // Render as animation
                     args += " -a";
                     // Add render device for Cycles
@@ -266,7 +285,7 @@ class Client
                         client_response.frames.Add(frame);
 
                         // Generate teh file name
-                        string file_name = frame.ToString().PadLeft(4, '0') + "." + master_response.file_format;
+                        string file_name = "frame_" + frame.ToString().PadLeft(4, '0') + "." + master_response.file_format;
                         // Add it to list
                         client_response.files.Add(file_name);
                         // Get it's path
@@ -303,6 +322,7 @@ class Client
                     {
                         try
                         {
+                            connection = new Socket(ip_address.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
                             // Try to connect
                             connection.Connect(remote_end_point);
 
@@ -324,6 +344,7 @@ class Client
                                 if (master_response.use_zip)
                                 {
                                     connection.SendFile(zip_file);
+                                    break;
                                 }
 
                                 else
@@ -333,7 +354,12 @@ class Client
                                     {
                                         connection.SendFile(path);
                                     }
+                                    break;
                                 }
+                            }
+                            else
+                            {
+                                break;
                             }
                         }
                         catch (Exception e)
@@ -343,7 +369,10 @@ class Client
                         }
                         
                     }
-                    
+
+                    // Cut the connection
+                    connection.Shutdown(SocketShutdown.Both);
+                    connection.Close();
                 }
                 catch (Exception e)
                 {
@@ -637,7 +666,7 @@ class Client
         Write_Log(cmd_output, enable_logging);
         // Split the content of the file into a List
         List<string> engines = new List<string>();
-        List<string> lines = (List<string>)File.ReadLines(Path.Join(SCRIPT_DIRECTORY, "engines.json"));
+        List<string> lines = File.ReadLines(Path.Join(SCRIPT_DIRECTORY, "engines.json")).ToList();
         string version = lines[0];
         lines.Remove(version);
         foreach (string line in lines)

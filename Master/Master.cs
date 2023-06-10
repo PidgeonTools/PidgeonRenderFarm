@@ -16,7 +16,7 @@ class Master
     public static string LOGS_DIRECTORY = "";
     public static string LOGS_FILE = "";
     public static string PROJECT_DIRECTORY = "";
-    public static string PROJECT_EXTENSION = "prfp";
+    public static string PROJECT_EXTENSION = ".prfp";
     public static string SETTINGS_FILE = "";
     public static string DATA_FILE = "";
 
@@ -152,8 +152,10 @@ class Master
     public static void Render_Project()
     {
         // Obtain the ip adress of the current machine
-        IPHostEntry host = Dns.GetHostEntry(Dns.GetHostName());
-        IPAddress ip_address = host.AddressList[0];
+        IPHostEntry host = Dns.GetHostEntry("127.0.0.1");
+        //IPAddress ip_address = host.AddressList[0];
+        IPAddress ip_address = IPAddress.Parse("127.0.0.1");
+        Console.WriteLine(ip_address.ToString());
         // Create a end point with given IP and port
         IPEndPoint local_end_point = new IPEndPoint(ip_address, SETTINGS.port);
 
@@ -231,12 +233,13 @@ class Master
                 if (frames.Count != 0)
                 {
                     master_response.message = "here";
+                    master_response.use_zip = SETTINGS.use_zip;
                     master_response.id = PROJECT.id;
                     master_response.file_size = new FileInfo(PROJECT.full_path_blend).Length;
-                    master_response.first_frame = frames[0];
-                    master_response.last_frame = frames[-1];
+                    master_response.first_frame = frames.First();
+                    master_response.last_frame = frames.Last();
                     master_response.render_engine = PROJECT.render_engine;
-                    master_response.render_engine = PROJECT.output_file_format;
+                    master_response.file_format = PROJECT.output_file_format;
                 }
 
                 // Convert the object to string
@@ -245,6 +248,13 @@ class Master
                 byte[] bytes_send = Encoding.UTF8.GetBytes(json_send);
                 // Send bytes to client
                 client.Send(bytes_send);
+
+                if (master_response.message == "NAN")
+                {
+                    // Cut the connection
+                    client.Shutdown(SocketShutdown.Both);
+                    client.Close();
+                }
 
                 // Receive message from client
                 buffer = new byte[1024];
@@ -281,7 +291,7 @@ class Master
                     if (SETTINGS.use_zip)
                     {
                         // Generate a file name
-                        string file = client_response.frames[0] + "_" + client_response.frames[-1] + ".zip";
+                        string file = client_response.frames.First() + "_" + client_response.frames.Last() + ".zip";
                         // Generate a path for the file
                         string path = Path.Join(PROJECT_DIRECTORY, file);
                         // Download the file into the path
@@ -291,7 +301,7 @@ class Master
                         }
 
                         // Extract the contents
-                        ZipFile.ExtractToDirectory(file, PROJECT_DIRECTORY);
+                        ZipFile.ExtractToDirectory(path, PROJECT_DIRECTORY);
                     }
 
                     else
@@ -421,12 +431,15 @@ class Master
         // Make sure to only change a thing at once
         lock (frame_lock)
         {
+            if (frames_left.Count == 0)
+            {
+                return empty_list;
+            }
+
             // Create a list with frames for Client
-            List<int> frames_picked = new List<int>();
-            // Copy the frames_left (avoid problems with itterating)
-            List<int> frames_left_copy = frames_left;
+            List<int> frames_picked = new List<int> { };
             // Set the first frame to the first frame left
-            int first_frame = frames_left_copy.Min();
+            int first_frame = frames_left.Min();
 
             // Itterate as long as we are within the chunk size
             for (int chunk = 0; chunk < PROJECT.chunks; chunk++)
@@ -439,10 +452,10 @@ class Master
 
                 // If out frame is left, add it to the picked frames
                 // and remove it from the frames left
-                if (frames_left_copy.Contains(first_frame + chunk))
+                if (frames_left.Contains(first_frame + chunk))
                 {
-                    frames_left.Remove(first_frame + chunk);
                     frames_picked.Add(first_frame + chunk);
+                    frames_left.Remove(first_frame + chunk);
                 }
 
                 // If there is not another continous frames
@@ -454,7 +467,7 @@ class Master
             }
 
             // Fail safe
-            return empty_list;
+            return frames_picked;
         }
     }
 
@@ -633,11 +646,11 @@ class Master
 
         // Use FTP
         // Use Menu() to grab user input
-        new_settings.use_ftp = Parse_Bool(Menu(basic_bool, new List<string> { "Use 'File Transfer Protocol' instead of sockets for file distribution?" }));
+        //new_settings.use_ftp = Parse_Bool(Menu(basic_bool, new List<string> { "Use 'File Transfer Protocol' instead of sockets for file distribution?" }));
 
         // Use ZIP
         // Use Menu() to grab user input
-        //new_settings.use_zip = Parse_Bool(Menu(basic_bool, new List<string> { "Zip/compress files before distributing? (might save some bandwitdh at the cost of image quality)" }));
+        new_settings.use_zip = Parse_Bool(Menu(basic_bool, new List<string> { "Zip/compress files before distributing? (might save some bandwitdh at the cost of image quality)" }));
 
         // Data collection
         // Use Menu() to grab user input
@@ -719,6 +732,19 @@ class Master
         bool test_render = Parse_Bool(Menu(basic_bool,
                                            new List<string> { "Render a test frame? (Will take some time, for client option 'Maximum time per frame')" }));
 
+        // Chunks
+        // Let user input a valid size
+        Show_Top_Bar();
+        Console.WriteLine("Chunk size:");
+        user_input = Console.ReadLine();
+        while (!int.TryParse(user_input, out _))
+        {
+            Console.WriteLine("Please input a whole number");
+            user_input = Console.ReadLine();
+        }
+        new_project.chunks = Math.Abs(int.Parse(user_input));
+        Console.Clear();
+
         // Generate a video file
         // Use Menu() to grab user input
         new_project.video_generate = Parse_Bool(Menu(basic_bool,
@@ -774,19 +800,6 @@ class Master
                 user_input = Console.ReadLine();
             }
             new_project.video_y = Math.Abs(int.Parse(user_input));
-            Console.Clear();
-
-            // Chunks
-            // Let user input a valid size
-            Show_Top_Bar();
-            Console.WriteLine("Chunk size:");
-            user_input = Console.ReadLine();
-            while (!int.TryParse(user_input, out _))
-            {
-                Console.WriteLine("Please input a whole number");
-                user_input = Console.ReadLine();
-            }
-            new_project.chunks = Math.Abs(int.Parse(user_input));
             Console.Clear();
         }
 
@@ -892,7 +905,7 @@ class Master
     public static void Load_Project(string project_file)
     {
         // Prevent file read errors
-        if (!File.Exists(PROJECT.full_path_blend))
+        if (!File.Exists(project_file))
         {
             Project_Setup();
         }
@@ -981,19 +994,27 @@ class Master
     // Collect system data
     public static void Collect_Data()
     {
-        // Create empty PRF_Data object
-        PRF_Data new_data = new PRF_Data();
-
-        // ONLY proceed if the user agrees
-        if (SETTINGS.collect_data)
+        if (!File.Exists(DATA_FILE))
         {
-            // Gather informations and add to data object
-            new_data.version = VERSION;
-            new_data.os = System.Runtime.InteropServices.RuntimeInformation.OSDescription;
+            // Create empty PRF_Data object
+            PRF_Data new_data = new PRF_Data();
+
+            // ONLY proceed if the user agrees
+            if (SETTINGS.collect_data)
+            {
+                // Gather informations and add to data object
+                new_data.version = VERSION;
+                new_data.os = System.Runtime.InteropServices.RuntimeInformation.OSDescription;
+            }
+
+            // Save the obtained data
+            Save_Data(new_data);
         }
 
-        // Save the obtained data
-        Save_Data(new_data);
+        else
+        {
+            Load_Data();
+        }
     }
 
     // Save data object
@@ -1014,7 +1035,7 @@ class Master
     public static void Save_Data()
     {
         // +1 here
-        PRF_DATA.projects++;
+        PRF_DATA.projects = PRF_DATA.projects + 1;
 
         // Convert object to json
         var options = new JsonSerializerOptions { WriteIndented = true };
@@ -1025,7 +1046,7 @@ class Master
     }
 
     // Load PRF_DATA
-    public static void Load_Data(PRF_Data new_data)
+    public static void Load_Data()
     {
         // Prevent read errors
         if (!File.Exists(DATA_FILE))
