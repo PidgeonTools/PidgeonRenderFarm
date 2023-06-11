@@ -18,11 +18,9 @@ You may have to configure your firewall. [See troubleshooting section for more d
 - **No  internet connection required** / works in LAN
 
 ## Requirements
-**RAM:**        <50 MB + RAM for Blender
-
-**Storage:**    ~100 kb + storage for projects
-
-**Network:**    **No internet** connection required, just a local network
+- **RAM:**        <50 MB + RAM for Blender
+- **Storage:**    ~200 kb (for Client and Master each) + storage for projects
+- **Network:**    **No internet** connection required, just a local network
 
 ### Operating System
 Modern **Windows** (7 and above), **Linux** and **MacOS** are supported. Though only the Windows and Linux versions are tested.
@@ -48,12 +46,16 @@ Modern **Windows** (7 and above), **Linux** and **MacOS** are supported. Though 
 
 ⏱️ = halted
 
-## Setup
+## Installation
 ### Client
-1. 
+1. Download the latest realse for your OS
+2. Extract the content of the zip file
+3. Execute Client.cs/.exe
 
 ### Master
-1. 
+1. Download the latest realse for your OS
+2. Extract the content of the zip file
+3. Execute Master.cs/.exe
 
 ## Troubleshooting
 ### Server socket won't start

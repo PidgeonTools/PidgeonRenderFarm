@@ -210,8 +210,11 @@ class Master
             Write_Log(e.ToString());
         }
 
-        Console.WriteLine("Rendering done! You can go back to the main menu by press any key");
-        Console.ReadKey();
+        //Console.WriteLine("Rendering done! You can go back to the main menu by press any key");
+        //Console.ReadKey();
+
+        Console.WriteLine("Rendering done!");
+        Environment.Exit(1);
     }
 
     public static void Client_Handler(Socket client)
@@ -663,7 +666,7 @@ class Master
 
         // FFMPEG Executable
         // Check if the file exsists
-        Show_Top_Bar();
+        /*Show_Top_Bar();
         Console.WriteLine("Where is your FFMPEG executable stored? (if you don't want to use FFMPEG just leave this empty)");
         user_input = Console.ReadLine().Replace("\"", "");
         while (!File.Exists(user_input) && user_input != "")
@@ -671,7 +674,7 @@ class Master
             Console.WriteLine("Please input the path to your FFMPEG executable");
             user_input = Console.ReadLine().Replace("\"", "");
         }
-        new_settings.ffmpeg_executable = user_input;
+        new_settings.ffmpeg_executable = user_input;*/
 
         // Keep output
         // Use Menu() to grab user input
@@ -776,7 +779,7 @@ class Master
 
         // Use ZIP
         // Use Menu() to grab user input
-        new_project.use_zip = Parse_Bool(Menu(basic_bool, new List<string> { "Zip/compress files before distributing? (might save some bandwitdh at the cost of image quality; recommended to use with chunks)" }));
+        //new_project.use_zip = Parse_Bool(Menu(basic_bool, new List<string> { "Zip/compress files before distributing? (might save some bandwitdh at the cost of image quality; recommended to use with chunks)" }));
 
         // Generate a video file
         // Use Menu() to grab user input
@@ -1212,7 +1215,7 @@ public class Project
     public int video_x { get; set; }
     public int video_y { get; set; }
     public int chunks { get; set; } = 0;
-    public bool use_zip { get; set; }
+    public bool use_zip { get; set; } = true;
     public float time_per_frame { get; set; }
     public int ram_use { get; set; } = 0;
     public int first_frame { get; set; }
