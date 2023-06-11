@@ -243,6 +243,9 @@ class Client
                     // Set the last frame
                     args += " -e ";
                     args += master_response.last_frame;
+                    // Limit CPU threads
+                    args += " -t ";
+                    args += SETTINGS.limit_cpu_threads;
                     // Render as animation
                     args += " -a";
                     // Add render device for Cycles
@@ -576,56 +579,6 @@ class Client
             }
         }
 
-        // CPU Thread limit
-        // Use Menu() to grab user input
-        List<string> tmp = new List<string>();
-        for (int thread = 0; thread < Environment.ProcessorCount; thread++)
-        {
-            tmp.Add((thread + 1).ToString());
-        }
-        tmp.Reverse();
-        new_settings.limit_cpu_threads = int.Parse(Menu(tmp, new List<string> { "How many CPU threads to use? (used for compositing and rendering, if enabled; if you can't see all of your aviable threads, please contact us on Discord)" }));
-
-        // RAM usage limit
-        // Let the user input a valid number
-        // If emtpy, then use use no limit
-        Show_Top_Bar();
-        Console.WriteLine("If you would like to limit the amount of RAM used for projects type a number here (in MegaByte/MB; type 0/leave empty for no limit):");
-        user_input = Console.ReadLine();
-        while (!int.TryParse(user_input, out _))
-        {
-            if (user_input == "")
-            {
-                user_input = "0";
-                break;
-            }
-
-            Console.WriteLine("Please input a whole number");
-            user_input = Console.ReadLine();
-        }
-        new_settings.limit_ram_use = Math.Abs(int.Parse(user_input));
-        Console.Clear();
-
-        // Time limit per frame
-        // Let the user input a valid number
-        // If emtpy, then use use no limit
-        Show_Top_Bar();
-        Console.WriteLine("If you would like to limit the amount of time consumed per frame type a number here (in seconds; type 0.0/leave empty for no limit):");
-        user_input = Console.ReadLine();
-        while (!float.TryParse(user_input, out _))
-        {
-            if (user_input == "")
-            {
-                user_input = "0.0";
-                break;
-            }
-
-            Console.WriteLine("Please input a decimal number");
-            user_input = Console.ReadLine();
-        }
-        new_settings.limit_time_frame = MathF.Abs(float.Parse(user_input));
-        Console.Clear();
-
         // Select allowed render engines
         (new_settings.allowed_engines, new_settings.blender_version) = Pick_Render_Engines(new_settings.blender_executable, new_settings.enable_logging);
 
@@ -640,6 +593,61 @@ class Client
         // Data collection
         // Use Menu() to grab user input
         new_settings.collect_data = Parse_Bool(Menu(basic_bool, new List<string> { "Allow us to collect data? (We have no acess to it, even if you enter yes!) " }));
+
+        bool advances_settings = Parse_Bool(Menu(basic_bool, new List<string> { "Would you like to edit the advanced settings?" }));
+
+        if (advances_settings)
+        {
+            // CPU Thread limit
+            // Use Menu() to grab user input
+            List<string> tmp = new List<string>();
+            for (int thread = 0; thread < Environment.ProcessorCount; thread++)
+            {
+                tmp.Add((thread + 1).ToString());
+            }
+            tmp.Reverse();
+            new_settings.limit_cpu_threads = int.Parse(Menu(tmp, new List<string> { "How many CPU threads to use? (used for compositing and rendering, if enabled; if you can't see all of your aviable threads, please contact us on Discord)" }));
+
+            // RAM usage limit
+            // Let the user input a valid number
+            // If emtpy, then use use no limit
+            /*Show_Top_Bar();
+            Console.WriteLine("If you would like to limit the amount of RAM used for projects type a number here (in GigaByte/GB; type 0/leave empty for no limit):");
+            user_input = Console.ReadLine();
+            while (!int.TryParse(user_input, out _))
+            {
+                if (user_input == "")
+                {
+                    user_input = "0";
+                    break;
+                }
+
+                Console.WriteLine("Please input a whole number");
+                user_input = Console.ReadLine();
+            }
+            new_settings.limit_ram_use = Math.Abs(int.Parse(user_input));
+            Console.Clear();*/
+
+            // Time limit per frame
+            // Let the user input a valid number
+            // If emtpy, then use use no limit
+            Show_Top_Bar();
+            Console.WriteLine("If you would like to limit the amount of time consumed per frame type a number here (in seconds; type 0.0/leave empty for no limit):");
+            user_input = Console.ReadLine();
+            while (!float.TryParse(user_input, out _))
+            {
+                if (user_input == "")
+                {
+                    user_input = "0.0";
+                    break;
+                }
+
+                Console.WriteLine("Please input a decimal number");
+                user_input = Console.ReadLine();
+            }
+            new_settings.limit_time_frame = MathF.Abs(float.Parse(user_input));
+            Console.Clear();
+        }
 
         // Save the settings
         Save_Settings(new_settings);
@@ -975,7 +983,7 @@ public class Settings
     public string blender_executable { get; set; }
     public string blender_version { get; set; }
     public string render_device { get; set; }
-    public int limit_cpu_threads { get; set; } = 0;
+    public int limit_cpu_threads { get; set; } = 2;
     public int limit_ram_use { get; set; } = 0;
     public float limit_time_frame { get; set; } = 0;
     public List<string> allowed_engines { get; set; }
