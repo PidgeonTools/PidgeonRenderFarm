@@ -16,6 +16,7 @@ json_object = {
     "blender_version": bpy.app.version_string,
     "first_frame": bpy.context.scene.frame_start,
     "last_frame": bpy.context.scene.frame_end,
+    "frame_step": bpy.context.scene.frame_step,
     "render_engine": bpy.context.scene.render.engine,
     "file_format": bpy.context.scene.render.image_settings.file_format,
     "render_time": 0 # placeholder

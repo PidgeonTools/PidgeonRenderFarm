@@ -156,7 +156,7 @@ class Master
 
         // Get the local IPv4 of device
         IPAddress ip_address = Get_IPv4();
-        Show_Top_Bar(new List<string> { "Master IP address: " + ip_address.ToString() });
+        Show_Top_Bar(new List<string> { "Master IP address: " + ip_address.ToString(), "Master Port: " + SETTINGS.port.ToString() });
 
         // Create a end point with given IP and port
         IPEndPoint local_end_point = new IPEndPoint(ip_address, SETTINGS.port);
@@ -250,6 +250,7 @@ class Master
                     master_response.file_size = new FileInfo(PROJECT.full_path_blend).Length;
                     master_response.first_frame = frames.First();
                     master_response.last_frame = frames.Last();
+                    master_response.frame_step = PROJECT.frame_step;
                     master_response.render_engine = PROJECT.render_engine;
                     master_response.file_format = PROJECT.output_file_format;
                 }
@@ -454,7 +455,7 @@ class Master
             int first_frame = frames_left.Min();
 
             // Itterate as long as we are within the chunk size
-            for (int chunk = 0; chunk < PROJECT.chunks; chunk++)
+            for (int chunk = 0; chunk < PROJECT.chunks*PROJECT.frame_step; chunk += PROJECT.frame_step)
             {
                 // If there are no frames left, return the picked ones
                 if (frames_left.Count == 0)
@@ -597,7 +598,7 @@ class Master
     // Print the top bar
     public static void Show_Top_Bar(List<string> addition = null)
     {
-        Console.WriteLine("Pidgeon Render Farm");
+        Console.WriteLine("Pidgeon Render Farm - Master");
         Console.WriteLine("Join the Discord server for support - https://discord.gg/cnFdGQP");
         Console.WriteLine("");
 
@@ -635,13 +636,13 @@ class Master
         // Let the user input a valid port
         // If emtpy, then use default port
         Show_Top_Bar();
-        Console.WriteLine("Which Port to use? (Default: 8080):");
+        Console.WriteLine("Which Port to use? (Default: 19186):");
         string user_input = Console.ReadLine();
         while (!Is_Port(user_input))
         {
             if (user_input == "")
             {
-                user_input = "8080";
+                user_input = "19186";
                 break;
             }
 
@@ -686,7 +687,7 @@ class Master
 
         // Data collection
         // Use Menu() to grab user input
-        new_settings.collect_data = Parse_Bool(Menu(basic_bool, new List<string> { "Allow us to collect data? (We have no acess to it, even if you enter yes!) " }));
+        new_settings.collect_data = Parse_Bool(Menu(basic_bool, new List<string> { "Allow us to collect data? (it is only stored locally for debugging purposes)" }));
 
         // Save the settings
         Save_Settings(new_settings);
@@ -925,12 +926,14 @@ class Master
         new_project.output_file_format = project_data.file_format;
         new_project.first_frame = project_data.first_frame;
         new_project.last_frame = project_data.last_frame;
-        new_project.frames_total = project_data.last_frame - (project_data.first_frame - 1);
+        new_project.frame_step = project_data.frame_step;
+        new_project.frames_total = 0;
 
         // Append every frame to frames_left
-        for (int frame = new_project.first_frame; frame <= new_project.last_frame; frame++)
+        for (int frame = new_project.first_frame; frame <= new_project.last_frame; frame += new_project.frame_step)
         {
             frames_left.Add(frame);
+            new_project.frames_total++;
         }
 
         // Save the project
@@ -983,13 +986,15 @@ class Master
 
         // Add all frames left to render
         frames_left = new List<int>();
-        for (int frame = PROJECT.first_frame; frame < PROJECT.last_frame; frame++)
+        for (int frame = PROJECT.first_frame; frame < PROJECT.last_frame; frame += PROJECT.frame_step)
         {
             if (!PROJECT.frames_complete.Contains(frame))
             {
                 frames_left.Add(frame);
             }
         }
+
+        Render_Project();
     }
     // Load a project from a given json string
     public static void Load_Project_From_String(string json_string)
@@ -1013,7 +1018,7 @@ class Master
 
             // Add all frames left to render
             frames_left = new List<int>();
-            for (int frame = PROJECT.first_frame; frame < PROJECT.last_frame; frame++)
+            for (int frame = PROJECT.first_frame; frame < PROJECT.last_frame; frame += PROJECT.frame_step)
             {
                 if (!PROJECT.frames_complete.Contains(frame))
                 {
@@ -1023,6 +1028,8 @@ class Master
 
             // Save the project
             Save_Project();
+
+            Render_Project();
         }
         catch (Exception e)
         {
@@ -1220,6 +1227,7 @@ public class Project
     public int ram_use { get; set; } = 0;
     public int first_frame { get; set; }
     public int last_frame { get; set; }
+    public int frame_step { get; set; }
     public int frames_total { get; set; }
     public List<int> frames_complete { get; set; } = new List<int>();
 }
@@ -1250,6 +1258,7 @@ public class Master_Response
     public string file_format { get; set; }
     public int first_frame { get; set; }
     public int last_frame { get; set; }
+    public int frame_step { get; set; }
 
 }
 
@@ -1263,6 +1272,7 @@ public class Project_Data
     public string file_format { get; set; }
     public int first_frame { get; set; }
     public int last_frame { get; set; }
+    public int frame_step { get; set; }
 }
 
 // PRF_Data object class

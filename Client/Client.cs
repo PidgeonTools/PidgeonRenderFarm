@@ -170,7 +170,7 @@ class Client
                     client_response = new Client_Response();
 
                     PROJECT_DIRECTORY = Path.Join(SCRIPT_DIRECTORY, master_response.id.ToString());
-                    Console.WriteLine(PROJECT_DIRECTORY);
+                    //Console.WriteLine(PROJECT_DIRECTORY);
 
                     // Check if the directory exsists
                     if (!Directory.Exists(PROJECT_DIRECTORY))
@@ -284,7 +284,7 @@ class Client
                     // List for paths -> send files
                     List<string> paths = new List<string>();
                     // itterate through all rendered frames
-                    for (int frame = master_response.first_frame; frame <= master_response.last_frame; frame++)
+                    for (int frame = master_response.first_frame; frame <= master_response.last_frame; frame += master_response.frame_step)
                     {
                         // Add frame to list
                         client_response.frames.Add(frame);
@@ -498,7 +498,7 @@ class Client
     // Print the top bar
     public static void Show_Top_Bar()
     {
-        Console.WriteLine("Pidgeon Render Farm");
+        Console.WriteLine("Pidgeon Render Farm - Client");
         Console.WriteLine("Join the Discord server for support - https://discord.gg/cnFdGQP");
         Console.WriteLine("");
         Console.WriteLine("#--------------------------------------------------------------#");
@@ -527,7 +527,7 @@ class Client
         // Let the user input a valid IP adress with Port
         // E.g. "127.0.0.1:8080", "127.0.0.1:8081"
         Show_Top_Bar();
-        Console.WriteLine("If you want to add a Master write it like this 'IPv4:Port', e.g. '127.0.0.1:8080'");
+        Console.WriteLine("If you want to add a Master write it like this 'IPv4:Port', e.g. '127.0.0.1:19186'");
         while (true)
         {
             Console.WriteLine("Would you like to add another Master? (leave empty for no)");
@@ -567,7 +567,7 @@ class Client
         // Keep output
         // Use Menu() to grab user input
         new_settings.render_device = Menu(new List<string> { "CPU", "CUDA", "OPTIX", "HIP", "ONEAPI", "METAL", "OPENCL" },
-                                          new List<string> { "What device/API to use for rendering? (Be sure your device and Blender version supports yor selection!)" });
+                                          new List<string> { "What device/API to use for rendering? (Be sure your device and Blender version supports your selection!)" });
 
         // Add CPU
         if (new_settings.render_device != "CPU")
@@ -592,7 +592,7 @@ class Client
 
         // Data collection
         // Use Menu() to grab user input
-        new_settings.collect_data = Parse_Bool(Menu(basic_bool, new List<string> { "Allow us to collect data? (We have no acess to it, even if you enter yes!) " }));
+        new_settings.collect_data = Parse_Bool(Menu(basic_bool, new List<string> { "Allow us to collect data? (it is only stored locally for debugging purposes)" }));
 
         bool advances_settings = Parse_Bool(Menu(basic_bool, new List<string> { "Would you like to edit the advanced settings?" }));
 
@@ -724,6 +724,11 @@ class Client
                 {
                     engines.Remove(selection);
                     picked_engines.Add(selection);
+                }
+
+                else if (selection == "That is it, I don't want to allow more engines" && picked_engines.Count >= 1)
+                {
+                    break;
                 }
             }
 
@@ -1036,6 +1041,7 @@ public class Master_Response
     public string file_format { get; set; }
     public int first_frame { get; set; }
     public int last_frame { get; set; }
+    public int frame_step { get; set; }
 
 }
 
