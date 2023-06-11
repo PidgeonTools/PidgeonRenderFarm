@@ -74,7 +74,7 @@ The installation process is the same for the Client and Master
 Advanced (optional)
 
 10. (optional) Now pick the amount of CPU threads to use (even if you don't render with the CPU, it is used for compositing)
-11. (optional) If you want to restrain the RAM usage of projects, then type a value in GB. In case you don't want a limit you just type ``0`` or leave it empty
+11. (optional, currently not aviable) If you want to restrain the RAM usage of projects, then type a value in GB. In case you don't want a limit you just type ``0`` or leave it empty
 12. (optional) Same thing goes for the time limit (which limits the render time per frame. E.g. your Master estimated 50 seconds and your Clients limit is 30 seconds, the Client will deny this project)
 13. Hit ``Start Client`` and your Client is ready!
 
