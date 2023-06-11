@@ -38,7 +38,7 @@ class Client
         }
 
         // Get the name for the current log, settings and data
-        LOGS_FILE = Path.Join(LOGS_DIRECTORY, ("client_" + start_time.ToString("HHmmss") + ".txt"));
+        LOGS_FILE = Path.Join(LOGS_DIRECTORY, ("client_" + start_time.ToString("HH_mm_ss") + ".txt"));
         SETTINGS_FILE = Path.Join(SCRIPT_DIRECTORY, "client_settings.json");
         DATA_FILE = Path.Join(SCRIPT_DIRECTORY, "client_data.json");
 
@@ -520,7 +520,7 @@ class Client
             Console.WriteLine("Would you like to add another Master? (leave empty for no)");
             user_input = Console.ReadLine();
 
-            if (user_input == "" && new_settings.masters.Count >= 0)
+            if (user_input == "" && new_settings.masters.Count > 0)
             {
                 break;
             }
@@ -621,11 +621,11 @@ class Client
 
         // Keep input
         // Use Menu() to grab user input
-        new_settings.keep_input = Parse_Bool(Menu(basic_bool, new List<string> { "Keep the files received from the Master?" }));
+        //new_settings.keep_input = Parse_Bool(Menu(basic_bool, new List<string> { "Keep the files received from the Master?" }));
 
         // Keep output
         // Use Menu() to grab user input
-        new_settings.keep_output = Parse_Bool(Menu(basic_bool, new List<string> { "Keep the files rendered on this device?" }));
+        //new_settings.keep_output = Parse_Bool(Menu(basic_bool, new List<string> { "Keep the files rendered on this device?" }));
 
         // Data collection
         // Use Menu() to grab user input

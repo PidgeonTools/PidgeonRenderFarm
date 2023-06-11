@@ -6,6 +6,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using static System.Formats.Asn1.AsnWriter;
 
 class Master
 {
@@ -44,7 +45,7 @@ class Master
         }
 
         // Get the name for the current log, settings and data
-        LOGS_FILE = Path.Join(LOGS_DIRECTORY, ("master_" + start_time.ToString("HHmmss") + ".txt"));
+        LOGS_FILE = Path.Join(LOGS_DIRECTORY, ("master_" + start_time.ToString("HH_mm_ss") + ".txt"));
         SETTINGS_FILE = Path.Join(SCRIPT_DIRECTORY, "master_settings.json");
         DATA_FILE = Path.Join(SCRIPT_DIRECTORY, "master_data.json");
 
@@ -151,11 +152,12 @@ class Master
 
     public static void Render_Project()
     {
-        // Obtain the ip adress of the current machine
-        IPHostEntry host = Dns.GetHostEntry("127.0.0.1");
-        //IPAddress ip_address = host.AddressList[0];
-        IPAddress ip_address = IPAddress.Parse("127.0.0.1");
-        Console.WriteLine(ip_address.ToString());
+        Console.Clear();
+
+        // Get the local IPv4 of device
+        IPAddress ip_address = Get_IPv4();
+        Show_Top_Bar(new List<string> { "Master IP address: " + ip_address.ToString() });
+
         // Create a end point with given IP and port
         IPEndPoint local_end_point = new IPEndPoint(ip_address, SETTINGS.port);
 
@@ -193,6 +195,13 @@ class Master
                     Write_Log(e.ToString());
                 }
             }
+
+            try
+            {
+                listener.Shutdown(SocketShutdown.Both);
+                listener.Close();
+            }
+            catch { }
         }
         catch (Exception e)
         {
@@ -210,7 +219,7 @@ class Master
         try
         {
             // Receive message from client
-            byte[] buffer = new byte[1024];
+            byte[] buffer = new byte[8192];
             int received = client.Receive(buffer);
             // Convert bytes to string
             string json_receive = Encoding.UTF8.GetString(buffer, 0, received);
@@ -233,7 +242,7 @@ class Master
                 if (frames.Count != 0)
                 {
                     master_response.message = "here";
-                    master_response.use_zip = SETTINGS.use_zip;
+                    master_response.use_zip = PROJECT.use_zip;
                     master_response.id = PROJECT.id;
                     master_response.file_size = new FileInfo(PROJECT.full_path_blend).Length;
                     master_response.first_frame = frames.First();
@@ -288,7 +297,7 @@ class Master
                     client.Send(bytes_send);
 
                     // If files are compressed to zip
-                    if (SETTINGS.use_zip)
+                    if (PROJECT.use_zip)
                     {
                         // Generate a file name
                         string file = client_response.frames.First() + "_" + client_response.frames.Last() + ".zip";
@@ -583,11 +592,22 @@ class Master
     }
 
     // Print the top bar
-    public static void Show_Top_Bar()
+    public static void Show_Top_Bar(List<string> addition = null)
     {
         Console.WriteLine("Pidgeon Render Farm");
         Console.WriteLine("Join the Discord server for support - https://discord.gg/cnFdGQP");
         Console.WriteLine("");
+
+        if (addition != null)
+        {
+            foreach (string line in addition)
+            {
+                Console.WriteLine(line);
+            }
+
+            Console.WriteLine("");
+        }
+
         Console.WriteLine("#--------------------------------------------------------------#");
         Console.WriteLine("");
     }
@@ -639,18 +659,27 @@ class Master
             user_input = Console.ReadLine().Replace("\"", "");
         }
         new_settings.blender_executable = user_input;
+        Console.Clear();
+
+        // FFMPEG Executable
+        // Check if the file exsists
+        Show_Top_Bar();
+        Console.WriteLine("Where is your FFMPEG executable stored? (if you don't want to use FFMPEG just leave this empty)");
+        user_input = Console.ReadLine().Replace("\"", "");
+        while (!File.Exists(user_input) && user_input != "")
+        {
+            Console.WriteLine("Please input the path to your FFMPEG executable");
+            user_input = Console.ReadLine().Replace("\"", "");
+        }
+        new_settings.ffmpeg_executable = user_input;
 
         // Keep output
         // Use Menu() to grab user input
-        new_settings.keep_output = Parse_Bool(Menu(basic_bool, new List<string> { "Keep the files received from the clients?" }));
+        //new_settings.keep_output = Parse_Bool(Menu(basic_bool, new List<string> { "Keep the files received from the clients?" }));
 
         // Use FTP
         // Use Menu() to grab user input
         //new_settings.use_ftp = Parse_Bool(Menu(basic_bool, new List<string> { "Use 'File Transfer Protocol' instead of sockets for file distribution?" }));
-
-        // Use ZIP
-        // Use Menu() to grab user input
-        new_settings.use_zip = Parse_Bool(Menu(basic_bool, new List<string> { "Zip/compress files before distributing? (might save some bandwitdh at the cost of image quality)" }));
 
         // Data collection
         // Use Menu() to grab user input
@@ -735,7 +764,7 @@ class Master
         // Chunks
         // Let user input a valid size
         Show_Top_Bar();
-        Console.WriteLine("Chunk size:");
+        Console.WriteLine("Chunk size (recommended to use with ZIP files):");
         user_input = Console.ReadLine();
         while (!int.TryParse(user_input, out _))
         {
@@ -745,14 +774,39 @@ class Master
         new_project.chunks = Math.Abs(int.Parse(user_input));
         Console.Clear();
 
+        // Use ZIP
+        // Use Menu() to grab user input
+        new_project.use_zip = Parse_Bool(Menu(basic_bool, new List<string> { "Zip/compress files before distributing? (might save some bandwitdh at the cost of image quality; recommended to use with chunks)" }));
+
         // Generate a video file
         // Use Menu() to grab user input
-        new_project.video_generate = Parse_Bool(Menu(basic_bool,
-                                                     new List<string> { "Generate a video file? (MP4-Format, FFMPEG has to be installed!)" }));
+        //new_project.video_generate = Parse_Bool(Menu(basic_bool,
+        //                                             new List<string> { "Generate a video file? (MP4-Format, FFMPEG has to be installed!)" }));
+
+        new_project.video_generate = false;
 
         // Only required if we generate a video
         if (new_project.video_generate)
         {
+            // Video FPS
+            // Let user input a valid value
+            Show_Top_Bar();
+            Console.WriteLine("Video frames per second: (Default: 24)");
+            user_input = Console.ReadLine();
+            while (!int.TryParse(user_input, out _))
+            {
+                if (user_input == "")
+                {
+                    user_input = "24";
+                    break;
+                }
+
+                Console.WriteLine("Please input a whole number");
+                user_input = Console.ReadLine();
+            }
+            new_project.video_fps = Math.Abs(int.Parse(user_input));
+            Console.Clear();
+
             // Video rate control type
             // Use Menu() to grab user input
             new_project.video_rate_control = Menu(new List<string> { "CRF", "CBR" },
@@ -776,36 +830,42 @@ class Master
             new_project.video_resize = Parse_Bool(Menu(new List<string> { "Yes", "No" },
                                                        new List<string> { "Rescale the video?" }));
 
-            // New video witdh/x
-            // Let user input a valid resolution
-            Show_Top_Bar();
-            Console.WriteLine("New video width:");
-            user_input = Console.ReadLine();
-            while (!int.TryParse(user_input, out _))
+            if (new_project.video_resize)
             {
-                Console.WriteLine("Please input a whole number");
+                // New video witdh/x
+                // Let user input a valid resolution
+                Show_Top_Bar();
+                Console.WriteLine("New video width:");
                 user_input = Console.ReadLine();
-            }
-            new_project.video_x = Math.Abs(int.Parse(user_input));
-            Console.Clear();
+                while (!int.TryParse(user_input, out _))
+                {
+                    Console.WriteLine("Please input a whole number");
+                    user_input = Console.ReadLine();
+                }
+                new_project.video_x = Math.Abs(int.Parse(user_input));
+                Console.Clear();
 
-            // New video height/y
-            // Let user input a valid resolution
-            Show_Top_Bar();
-            Console.WriteLine("New video height:");
-            user_input = Console.ReadLine();
-            while (!int.TryParse(user_input, out _))
-            {
-                Console.WriteLine("Please input a whole number");
+                // New video height/y
+                // Let user input a valid resolution
+                Show_Top_Bar();
+                Console.WriteLine("New video height:");
                 user_input = Console.ReadLine();
+                while (!int.TryParse(user_input, out _))
+                {
+                    Console.WriteLine("Please input a whole number");
+                    user_input = Console.ReadLine();
+                }
+                new_project.video_y = Math.Abs(int.Parse(user_input));
+                Console.Clear();
             }
-            new_project.video_y = Math.Abs(int.Parse(user_input));
-            Console.Clear();
         }
 
         // Get project directory name and create it
         PROJECT_DIRECTORY = Path.Join(SCRIPT_DIRECTORY, new_project.id);
         Directory.CreateDirectory(PROJECT_DIRECTORY);
+
+        Show_Top_Bar();
+        Console.WriteLine("Gathering informations of your project. This usually only takes a few seconds. Please wait...");
 
         // Create a command for blender to optain some variables
         //string command = SETTINGS.blender_executable;
@@ -1101,6 +1161,24 @@ class Master
         // if none applies, return error
         return null;
     }
+
+    public static IPAddress Get_IPv4()
+    {
+        // Obtain the ip adresses of the current machine
+        IPHostEntry host = Dns.GetHostEntry(Dns.GetHostName());
+
+        // Check each adress -> find out if it's local IPv4
+        foreach (IPAddress ip in host.AddressList)
+        {
+            if (ip.AddressFamily == AddressFamily.InterNetwork)
+            {
+                return ip;
+            }
+        }
+
+        // If not connected only use local IP
+        return IPAddress.Parse("127.0.0.1");
+    }
     #endregion
 }
 
@@ -1111,9 +1189,9 @@ public class Settings
     public float version { get; set; } = 0.0f;
     public int port { get; set; } = 8080;
     public string blender_executable { get; set; }
+    public string ffmpeg_executable { get; set; }
     public bool keep_output { get; set; }
     public bool use_ftp { get; set; }
-    public bool use_zip { get; set; }
     public bool collect_data { get; set; }
     public bool enable_logging { get; set; }
 }
@@ -1134,6 +1212,7 @@ public class Project
     public int video_x { get; set; }
     public int video_y { get; set; }
     public int chunks { get; set; } = 0;
+    public bool use_zip { get; set; }
     public float time_per_frame { get; set; }
     public int ram_use { get; set; } = 0;
     public int first_frame { get; set; }
