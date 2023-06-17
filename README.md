@@ -1,21 +1,21 @@
 # Pidgeon Render Farm
 <img src="images/PRF_light.png" width="512"/>
 
-Pidgeon Render Farm is a **P2P** (peer to peer - no third party) render farm software. Because **no third party** server is involved, you don't need an **internet connection**, just a local network. It allows you to use the computation power of multiple machines (e.g. macBook, desktop and laptop) to render on one (Blender) project. For now you can only render animations with PRF.
+Pidgeon Render Farm is an innovative, **peer-to-peer** render farm software that empowers you to harness the computational power of **multiple devices**, such as your MacBook, desktop, and laptop, to render a single Blender project. This software operates on a **local network**, **eliminating the need for an internet connection and third-party servers**.
 
 ### Note
 You may have to configure your firewall. [See troubleshooting section for more details](https://github.com/PidgeonTools/PidgeonRenderFarm#server-socket-wont-start).
 
-## What makes PidgeonRenderFarm stand out?
-- Very **customizable**
-- **Tight integration with other Addons by PidgeonTools**
-- **Secure**, because of P2P
-- Works in shell only
-- **Free support**
-- **Freeware**
-- Keeps your data on your devices
-- Supports many operating systems
-- **No  internet connection required** / works in LAN
+## What makes Pidgeon Render Farm stand out?
+- **Customizability**: Pidgeon Render Farm is highly customizable, allowing you to tailor the software to your specific needs.
+- **Integration**: It integrates seamlessly with other addons by PidgeonTools, enhancing its functionality.
+- **Security**: The peer-to-peer nature of the software ensures your data stays secure and only on your devices.
+- **Support**: Free support is available to help you navigate any challenges.
+- **Compatibility**: The software supports many operating systems, including modern Windows (7 and above), Linux, and MacOS.
+- **Freeware**: Pidgeon Render Farm will be freeware, making it accessible to all.
+
+## Why Pidgeon Render Farm?
+By choosing Pidgeon Render Farm, you're choosing a solution that's secure, customizable, and supportive of your local render farm needs.
 
 ## Requirements
 - **RAM:**        <50 MB + RAM for Blender
@@ -47,45 +47,41 @@ Modern **Windows** (7 and above), **Linux** and **MacOS** are supported. Though 
 ⏱️ = halted
 
 ## Installation
-The installation process is the same for the Client and Master
-1. Download the latest realse for your OS (for Windows there are pre-compiled versions)
-2. Extract the content of the zip file
-
-## Setup
 ### Master
-1. If you are on Windows double click the ``Master.exe`` to execute it, else execute it using the command ``mono Master.exe`` in the terminal (Be sure to use the correct .exe for your OS)
-2. Choose if you want to enable logging (it is recommended to set this to on)
-3. Choose which port to use. If you are not sure just leave it empty (Port ``8080`` will be used)
-4. Next up provide the program with your Blender installation. Do this by pasting the path of the executable into the program. (If you have it installed via steam, right click Blender in the libary then go to ``manage`` -> ``Browse local files``)
-5. Choose if you want to allow data collection. See a list of the data [here](https://github.com/PidgeonTools/PidgeonRenderFarm#do-you-collect-any-data)
-6. Now your Master is ready!
+1. **Download**: Start by downloading the latest release of Pidgeon Render Farm for your operating system. (currently only Windows)
+2. **Extract**: Once the download is complete, extract the contents of the zip file.
+3. **Execute**: If you're on Windows, double-click the Master.exe to execute it.
+4. **Logging**: You'll be prompted to choose if you want to enable logging. It's recommended to set this to 'on' as it can help troubleshoot any issues that may arise.
+5. **Port Selection**: Next, you'll need to choose which port to use. If you're unsure, you can leave this field empty, and Port 19186 will be used by default.
+6. **Blender Installation**: Provide the program with your Blender installation by pasting the path of the Blender executable into the program. If you have Blender installed via Steam, you can find this by right-clicking Blender in the library, then going to manage -> Browse local files.
+7. **Data Collection**: Choose if you want to allow data collection. We have no access to it, it will never leave your device, and is for debugging purposes only. You can see a list of the data that will be collected [here](https://github.com/PidgeonTools/PidgeonRenderFarm#do-you-collect-any-data).
+8. **Ready**: Now your Master is ready to go!
 
 ### Client
-1. If you are on Windows double click the ``Client.exe`` to execute it, else execute it using the command ``mono Client.exe`` in the terminal (Be sure to use the correct .exe for your OS)
-2. Choose if you want to enable logging (it is recommended to set this to on)
-3. Add one Master in the next step. A valid input looks like this: ``127.0.0.1:8080`` (keep in mind that you have to replace it with your Masters IP and Port; see the [FAQ](https://github.com/PidgeonTools/PidgeonRenderFarm#where-do-i-find-the-ip) to find out how you can get your IP)
-4. Next up provide the program with your Blender installation. Do this by pasting the path of the executable into the program. (If you have it installed via steam, right click Blender in the libary then go to ``manage`` -> ``Browse local files``)
-5. Now you choose which device you want to use for rendering. See the [FAQ](https://github.com/PidgeonTools/PidgeonRenderFarm#what-are-the-hardware-requirements-for-the-different-render-devicesapis) for a detailed description
-6. If you decided to use your GPU for rendering you now have the option to enable hybrid rendering. You really have to try this out, as it only helps for some devices.
-7. Stand by for a second and choose whether you want to pick allowed render engines on your own, or if you want to just allow all.
-8. (optional) Select the engines to allow one by one from the list. If you wish to finish your selection use the "That is it, I don't want to allow more engines" option.
-9. Choose if you want to allow data collection. See a list of the data [here](https://github.com/PidgeonTools/PidgeonRenderFarm#do-you-collect-any-data)
+1. **Download**: Begin by downloading the latest release of Pidgeon Render Farm for your operating system. (currently only Windows)
+2. **Extract**: After the download is complete, extract the contents of the zip file.
+3. **Execute**: If you're on Windows, double-click the Client.exe to execute it.
+4. **Logging**: You'll be asked to choose if you want to enable logging. It's recommended to set this to 'on' as it can help troubleshoot any issues that may arise.
+5. **Master Addition**: Add one Master in the next step. A valid input looks like this: ``127.0.0.1:19186``. Remember to replace it with your Master's IP and Port. You can find out how to get your IP in the FAQ section.
+6. **Blender Installation**: Provide the program with your Blender installation by pasting the path of the Blender executable into the program. If you have Blender installed via Steam, you can find this by right-clicking Blender in the library, then going to ``manage`` -> ``Browse local files``.
+7. **Rendering Device**: Choose which device you want to use for rendering. You can find a detailed description in the FAQ section.
+8. **Hybrid Rendering**: If you decided to use your GPU for rendering, you now have the option to enable hybrid rendering. It's worth trying out, as it only helps for some devices.
+9. **Render Engines**: Stand by for a second and choose whether you want to pick allowed render engines on your own, or if you want to just allow all. If you choose to select, you can pick the engines to allow one by one from the list. To finish your selection, use the "That is it, I don't want to allow more engines" option.
+10. **Data Collection**: Choose if you want to allow data collection. We have no access to it, it will never leave your device, and is for debugging purposes only. You can see a list of the data that will be collected [here](https://github.com/PidgeonTools/PidgeonRenderFarm#do-you-collect-any-data).
+11. **Ready**: Hit 'Start Client' and your Client is ready!
 
-Advanced (optional)
-
-10. (optional) Now pick the amount of CPU threads to use (even if you don't render with the CPU, it is used for compositing)
-11. (optional, currently not aviable) If you want to restrain the RAM usage of projects, then type a value in GB. In case you don't want a limit you just type ``0`` or leave it empty
-12. (optional) Same thing goes for the time limit (which limits the render time per frame. E.g. your Master estimated 50 seconds and your Clients limit is 30 seconds, the Client will deny this project)
-13. Hit ``Start Client`` and your Client is ready!
+Remember, you may need to configure your firewall settings to allow Pidgeon Render Farm to operate correctly. You can find more details about this in the troubleshooting section of the Pidgeon Render Farm documentation.
 
 ## Project Setup
-1. In the main menu choose ``New Project``
-2. Now enter the path of your .Blend file
-3. Decide whether you want to use Super Fast Render, to optimize the scene, before rendering
-4. Decide if you want the Master to render a test frame - the test render will be used to clalculate the estimated time per frame (if you have no limit on your Client, this makes no sense).
-5. Pick a chunk size. (must be a number greater than 0)
-6. The master now opens your project to obtain informations like the selected render engine and Blender version
-7. After this is done, your Master now waits for Clients
+1. **New Project**: In the main menu, choose 'New Project'.
+2. **.Blend File**: Enter the path of your .Blend file.
+3. **Super Fast Render**: Decide whether you want to use 'Super Fast Render' to optimize the scene before rendering.
+4. **Test Frame**: Decide if you want the Master to render a test frame. This test render will be used to calculate the estimated time per frame. If you have no limit on your Client, this step may not be necessary.
+5. **Chunk Size**: Pick a chunk size. This must be a number greater than 0. The chunk size determines how many frames are rendered at once. Instead of rendering only one frame and then reporting to the master, the Client will render a set of frames (the chunk) and after all frames are done it will report back and provide the master with the results. We recommend: 15
+6. **Project Information**: The master now opens your project to obtain information like the selected render engine and Blender version.
+7. **Waiting for Clients**: After this is done, your Master now waits for Clients to connect and start rendering.
+
+Remember, each step in the setup process is crucial to ensure that your project renders correctly. If you encounter any issues, refer to the troubleshooting section of the Pidgeon Render Farm documentation or reach out to their support team.
 
 ## Troubleshooting
 ### Server socket won't start
@@ -113,22 +109,19 @@ It is the easiest to just dissable the firewall entirely.
 
 ## FAQ
 ### Why should I turn logging on?
-Logging allows us to help you when encountering problems. Because the logs contain the errors (thrown by the compiler).
+Logging helps in troubleshooting by recording the errors thrown by the compiler. It's recommended to keep it on to help resolve any issues that may arise.
 
 ### Where do I find the IP?
-When creating a new project you can find the Masters IP in the top. It reads ``Master IP adress: xxx.xxx.xxx.xxx``
-Alternatively you can use the command ``ipconfig`` in the command promt (open it by pressing the Windows key and typing ``cmd``). On Linux you can use ``ip address`` in the terminal.
-On mac you go into the ``System Preferences`` -> ``Network`` -> Selct your network -> ``Advanced`` -> ``TCP/IP`` and what you want is the ``IPv4 Address``
+When creating a new project, you can find the Master's IP at the top. Alternatively, you can use the command ``ipconfig`` in the command prompt on Windows, ``ip address`` in the terminal on Linux, or go to ``System Preferences`` -> ``Network`` -> ``Select your network`` -> ``Advanced`` -> ``TCP/IP`` on Mac to find your IPv4 Address.
 
 ### What is the difference between CRF and CBR?
-- **CRF:**	Constant **Quality** (unpredictable file size)
-- **CBR:**	Constant **Bitrate** (somewhat unpredictable quality)
+CRF stands for Constant Quality, which may result in an unpredictable file size. CBR stands for Constant Bitrate, which can lead to somewhat unpredictable quality.
 
 ### What does the Chunks feature do/How does it work?
-The chunks feature allows Client to render multiple frames at once. E.g. instead of rendering only one frame and then reporting to the master, the Client will render from frame 1 to 25 and after all frames are done he will report back and provide the master with the results. It is recommended to use this feature.
+The chunks feature allows the Client to render multiple frames at once. Instead of rendering only one frame and then reporting to the master, the Client will render a set of frames (the chunk) and after all frames are done it will report back and provide the master with the results. It's recommended to use this feature.
 
 ### Why would I add multiple Masters in the Client? - Not aviable yet
-In case the **connection to the main Master fails** (because it is offline or you are uploading projects from different machines), the Client will **automatically** use another connection of the ones you added. In conclusion it is a nice to have, but if you don't need it just add a single connection.
+In case the connection to the main Master fails (because it is offline or you are uploading projects from different machines), the Client will automatically use another connection of the ones you added. It's a nice-to-have feature, but if you don't need it, just add a single connection.
 
 ### What are the hardware requirements for the different render devices/APIs?
 - **CPU:**	No requirement
