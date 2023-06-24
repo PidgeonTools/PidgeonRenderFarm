@@ -1,5 +1,9 @@
 # Pidgeon Render Farm
-<img src="images/PRF_light.png" width="512"/>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/PRF_light.png">
+  <source media="(prefers-color-scheme: light)" srcset="images/PRF_dark.png">
+  <img alt="Shows the Pidgeon Renderfarm Logo" src="images/PRF_light.png" width="512">
+</picture>
 
 Pidgeon Render Farm is an innovative, **peer-to-peer** render farm software that empowers you to harness the computational power of **multiple devices**, such as your MacBook, desktop, and laptop, to render a single Blender project. This software operates on a **local network**, **eliminating the need for an internet connection and third-party servers**.
 
