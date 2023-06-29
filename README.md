@@ -11,12 +11,12 @@ Pidgeon Render Farm is an innovative, **peer-to-peer** render farm software that
 You may have to configure your firewall. [See troubleshooting section for more details](https://github.com/PidgeonTools/PidgeonRenderFarm#server-socket-wont-start).
 
 ## What makes Pidgeon Render Farm stand out?
+- **Free and Open Source**: Pidgeon Render Farm is open source, making it accessible to all - you can confirm the security and quality of Pidgeon Render Farm on your own.
 - **Customizability**: Pidgeon Render Farm is highly customizable, allowing you to tailor the software to your specific needs.
 - **Integration**: It integrates seamlessly with other addons by PidgeonTools, enhancing its functionality.
 - **Security**: The peer-to-peer nature of the software ensures your data stays secure and only on your devices.
 - **Support**: Free support is available to help you navigate any challenges.
 - **Compatibility**: The software supports many operating systems, including modern Windows (7 and above), Linux, and MacOS.
-- **Freeware**: Pidgeon Render Farm will be freeware, making it accessible to all.
 
 ## Why Pidgeon Render Farm?
 By choosing Pidgeon Render Farm, you're choosing a solution that's secure, customizable, and supportive of your local render farm needs.

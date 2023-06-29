@@ -1,12 +1,11 @@
-﻿using System;
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
-using static System.Formats.Asn1.AsnWriter;
 
 class Master
 {
@@ -20,15 +19,21 @@ class Master
     public static string PROJECT_EXTENSION = ".prfp";
     public static string SETTINGS_FILE = "";
     public static string DATA_FILE = "";
+    public static string BACKUP_FILE = "";
 
     // Create global objects and variables
-    public static float VERSION = 1.0f;
+    public static string VERSION = "0.1.0-beta";
+    public static string ip_address_string = "127.0.0.1";
     public static Settings SETTINGS;
     public static PRF_Data PRF_DATA;
     public static Project PROJECT;
     public static List<int> frames_left = new List<int>();
     private static readonly object frame_lock = new object();
     private static readonly object done_lock = new object();
+    private static readonly object print_lock = new object();
+    public static SRF srf;
+    public static Progress_Bar progress_bar;
+    public static bool use_srf = false;
     #endregion
 
     // Runs at start
@@ -48,6 +53,7 @@ class Master
         LOGS_FILE = Path.Join(LOGS_DIRECTORY, ("master_" + start_time.ToString("HH_mm_ss") + ".txt"));
         SETTINGS_FILE = Path.Join(SCRIPT_DIRECTORY, "master_settings.json");
         DATA_FILE = Path.Join(SCRIPT_DIRECTORY, "master_data.json");
+        BACKUP_FILE = Path.Join(SCRIPT_DIRECTORY, "PRF_Console.txt");
 
         // Main loop start
         Load_Settings();
@@ -58,6 +64,7 @@ class Master
         {
             try
             {
+                Write_Log(args[0]);
                 Load_Project_From_String(args[0]);
             }
             catch (Exception e)
@@ -81,7 +88,7 @@ class Master
             "Re-run setup",
             "Visit documentation",
             "Get help on Discord",
-            "Donate - Out of order",
+            "Donate",
             "Exit"
         };
 
@@ -135,11 +142,8 @@ class Master
 
             else if (selection == items[5])
             {
-                // Tell the user it is actually out of order
-                Console.WriteLine("This option is currently not aviable...");
-                Console.WriteLine("Press any button to return");
-                // User can press any button
-                Console.ReadKey();
+                // Open Paypal in browser
+                Process.Start(new ProcessStartInfo("https://www.paypal.me/kevinlorengel") { UseShellExecute = true });
             }
 
             else
@@ -153,10 +157,20 @@ class Master
     public static void Render_Project()
     {
         Console.Clear();
+        progress_bar = new Progress_Bar(Get_Frames_Done().Count, PROJECT.frames_total, "Rendering: ");
 
         // Get the local IPv4 of device
         IPAddress ip_address = Get_IPv4();
-        Show_Top_Bar(new List<string> { "Master IP address: " + ip_address.ToString(), "Master Port: " + SETTINGS.port.ToString() });
+        ip_address_string = ip_address.ToString();
+        Show_Top_Bar(new List<string> {"Master IP address: " + ip_address_string
+                                       , "Master Port: " + SETTINGS.port.ToString()});
+
+        List<Thread> threads = new List<Thread>();
+
+        lock (print_lock)
+        {
+            Console.WriteLine(progress_bar.Get_Progress_Bar());
+        }
 
         // Create a end point with given IP and port
         IPEndPoint local_end_point = new IPEndPoint(ip_address, SETTINGS.port);
@@ -182,42 +196,107 @@ class Master
 
                     // Log the time and ip of the Client connection
                     DateTime connection_time = DateTime.Now;
-                    Console.WriteLine("New connection: " + handler.RemoteEndPoint.ToString() + " @ " + connection_time.ToString("HH:mm:ss"));
-                    Write_Log("New connection: " + handler.RemoteEndPoint.ToString() + " @ " + connection_time.ToString("HH:mm:ss"));
+                    lock (print_lock)
+                    {
+                        Console.WriteLine("New connection: " + handler.RemoteEndPoint.ToString() + " @ " + connection_time.ToString("HH:mm:ss"));
+                        Write_Log("New connection: " + handler.RemoteEndPoint.ToString() + " @ " + connection_time.ToString("HH:mm:ss"));
+                    }
+
+                    Thread thread = new Thread(() => Client_Handler(handler, handler.RemoteEndPoint.ToString()));
+                    threads.Add(thread);
+                    thread.Start();
 
                     // Continue in the Client_Handler()
-                    Client_Handler(handler);
+                    //Client_Handler(handler);
                 }
                 catch (Exception e)
                 {
                     // Log errors
-                    Console.WriteLine("An error occurred, trying to continue anyways... (see the log files for more details)");
-                    Write_Log(e.ToString());
+                    lock (print_lock)
+                    {
+                        Console.WriteLine("An error occurred, trying to continue anyways... (see the log files for more details)");
+                        Write_Log(e.ToString());
+                    }
                 }
             }
 
-            try
+            foreach (Thread thread in threads)
             {
-                listener.Shutdown(SocketShutdown.Both);
-                listener.Close();
+                try
+                {
+                    thread.Abort();
+                }
+                catch { }
             }
-            catch { }
+
+            //listener.Shutdown(SocketShutdown.Both);
+            listener.Close();
         }
         catch (Exception e)
         {
             // Log errors
-            Console.WriteLine(e.ToString());
-            Write_Log(e.ToString());
+            lock (print_lock)
+            {
+                Console.WriteLine(e.ToString());
+                Write_Log(e.ToString());
+            }
         }
 
         //Console.WriteLine("Rendering done! You can go back to the main menu by press any key");
         //Console.ReadKey();
 
-        Console.WriteLine("Rendering done!");
-        Environment.Exit(1);
+        DateTime end_time = DateTime.Now;
+        lock (print_lock)
+        {
+            Console.WriteLine("Rendering done! @" + end_time.ToString("HH:mm:ss"));
+            Write_Log("Rendering done! @" + end_time.ToString("HH:mm:ss"));
+        }
+
+        if (PROJECT.use_sid_temporal)
+        {
+            // Prepare Blender arguments
+            string args = string.Format("-b \"{0}\" -P SID_Temporal_Bridge.py",
+                                 PROJECT.full_path_blend);
+
+            // Use Blender to render project
+            Process process = new Process();
+            // Set Blender as executable
+            process.StartInfo.FileName = SETTINGS.blender_executable;
+            // Use the command string as args
+            process.StartInfo.Arguments = args;
+            process.StartInfo.CreateNoWindow = true;
+            // Redirect output to log Blenders output
+            process.StartInfo.RedirectStandardOutput = true;
+            process.Start();
+            // Print and log the output
+            string cmd_output = "";
+            while (!process.HasExited)
+            {
+                cmd_output += process.StandardOutput.ReadToEnd();
+                Console.WriteLine(cmd_output);
+            }
+            Write_Log(cmd_output);
+
+            end_time = DateTime.Now;
+            lock (print_lock)
+            {
+                Console.WriteLine("Denoising done! @" + end_time.ToString("HH:mm:ss"));
+                Write_Log("Denoising done! @" + end_time.ToString("HH:mm:ss"));
+            }
+        }
+
+        if (!use_srf)
+        {
+            Console.WriteLine("You can go back to the main menu by pressing any key");
+            Console.ReadKey();
+        }
+        else
+        {
+            Environment.Exit(1);
+        }
     }
 
-    public static void Client_Handler(Socket client)
+    public static void Client_Handler(Socket client, string client_ip)
     {
         try
         {
@@ -226,8 +305,36 @@ class Master
             int received = client.Receive(buffer);
             // Convert bytes to string
             string json_receive = Encoding.UTF8.GetString(buffer, 0, received);
-            // Convert string to an object
-            Client_Response client_response = JsonSerializer.Deserialize<Client_Response>(json_receive);
+            Client_Response client_response = null;
+            try
+            {
+                // Convert string to an object
+                client_response = JsonSerializer.Deserialize<Client_Response>(json_receive);
+            }
+            catch (Exception e)
+            {
+                if (json_receive == "SRF")
+                {
+                    srf = new SRF(client);
+                    lock (print_lock)
+                    {
+                        Console.WriteLine("Super Render Farm connected!");
+                    }
+                    return;
+                }
+
+                Write_Log(e.ToString());
+            }
+
+            while (use_srf && srf == null)
+            {
+                lock (print_lock)
+                {
+                    Console.WriteLine("SRF not connected, waiting");
+                    Write_Log("SRF not connected, waiting");
+                }
+                Thread.Sleep(1000);
+            }
 
             // Prepare a new response and string
             Master_Response master_response = new Master_Response();
@@ -245,7 +352,6 @@ class Master
                 if (frames.Count != 0)
                 {
                     master_response.message = "here";
-                    master_response.use_zip = PROJECT.use_zip;
                     master_response.id = PROJECT.id;
                     master_response.file_size = new FileInfo(PROJECT.full_path_blend).Length;
                     master_response.first_frame = frames.First();
@@ -253,6 +359,7 @@ class Master
                     master_response.frame_step = PROJECT.frame_step;
                     master_response.render_engine = PROJECT.render_engine;
                     master_response.file_format = PROJECT.output_file_format;
+                    master_response.use_sid_temporal = PROJECT.use_sid_temporal;
                 }
 
                 // Convert the object to string
@@ -267,6 +374,28 @@ class Master
                     // Cut the connection
                     client.Shutdown(SocketShutdown.Both);
                     client.Close();
+
+                    string log = "no frames assigned to: " + client_ip;
+                    lock (print_lock)
+                    {
+                        Console.WriteLine(log);
+                        Write_Log(log);
+                    }
+
+                    return;
+                }
+
+                else
+                {
+                    string log = string.Format("Frame {0} - {1} assigned to {2}",
+                                        master_response.first_frame,
+                                        master_response.last_frame,
+                                        client.RemoteEndPoint.ToString());
+                    lock (print_lock)
+                    {
+                        Console.WriteLine(log);
+                        Write_Log(log);
+                    }
                 }
 
                 // Receive message from client
@@ -282,6 +411,14 @@ class Master
                 {
                     client.SendFile(PROJECT.full_path_blend);
                 }
+
+                if (srf != null)
+                {
+                    foreach (int frame in frames)
+                    {
+                        srf.Send_Update(frame, "rendering");
+                    }
+                }
             }
 
             else if (client_response.message == "output")
@@ -292,6 +429,14 @@ class Master
                 if (!client_response.faulty.Contains(false))
                 {
                     Add_Frames(client_response.frames);
+
+                    if (srf != null)
+                    {
+                        foreach (int frame in client_response.frames)
+                        {
+                            srf.Send_Update(frame, "waiting");
+                        }
+                    }
                 }
 
                 else
@@ -300,55 +445,101 @@ class Master
                     byte[] bytes_send = Encoding.UTF8.GetBytes("drop");
                     client.Send(bytes_send);
 
-                    // If files are compressed to zip
-                    if (PROJECT.use_zip)
+                    // Generate a file name
+                    string zip_file = client_response.frames.First() + "_" + client_response.frames.Last() + ".zip";
+                    // Generate a path for the file
+                    string path = Path.Join(PROJECT_DIRECTORY, zip_file);
+                    // Download the file into the path
+                    using (FileStream file_stream = File.Create(path))
                     {
-                        // Generate a file name
-                        string file = client_response.frames.First() + "_" + client_response.frames.Last() + ".zip";
-                        // Generate a path for the file
-                        string path = Path.Join(PROJECT_DIRECTORY, file);
-                        // Download the file into the path
-                        using (FileStream file_stream = File.Create(path))
-                        {
-                            new NetworkStream(client).CopyTo(file_stream);
-                        }
-
-                        // Extract the contents
-                        ZipFile.ExtractToDirectory(path, PROJECT_DIRECTORY);
+                        new NetworkStream(client).CopyTo(file_stream);
                     }
+                    // Extract the contents
+                    ZipFile.ExtractToDirectory(path, PROJECT_DIRECTORY);
 
-                    else
+                    string log = string.Format("Frame {0} - {1} downloaded from {2}",
+                                               client_response.frames.First(),
+                                               client_response.frames.Last(),
+                                               client.RemoteEndPoint.ToString());
+                    lock (print_lock)
                     {
-                        // Download frames one by one
-                        foreach (string file in client_response.files)
-                        {
-                            // Generate a path for the file
-                            string path = Path.Join(PROJECT_DIRECTORY, file);
-                            // Download the file into the path
-                            using (FileStream file_stream = File.Create(path))
-                            {
-                                new NetworkStream(client).CopyTo(file_stream);
-                            }
-                        }
+                        Console.WriteLine(log);
+                        Write_Log(log);
                     }
 
                     // Initialize list for checking "good" frames
                     List<int> done = new List<int>();
+                    // Initialize list for checking "bad" frames
+                    List<int> bad = new List<int>{};
+
+                    string base_directory = PROJECT_DIRECTORY;
+
+                    if (master_response.use_sid_temporal)
+                    {
+                        base_directory = Path.Join(base_directory, "noisy");
+                        string[] dirs = Directory.GetDirectories(base_directory);
+
+                        int highest = 0;
+
+                        foreach (string dir in dirs)
+                        {
+                            int dir_number = int.Parse(dir.Split(Path.DirectorySeparatorChar).Last());
+
+                            if (dir_number >= highest)
+                            {
+                                highest = dir_number;
+                            }
+                        }
+
+                        base_directory = Path.Join(base_directory, highest.ToString());
+                    }
 
                     // Check for every frame
                     foreach (string file in client_response.files)
                     {
                         // If the file exsists add it to list
-                        if (File.Exists(Path.Join(PROJECT_DIRECTORY, file)))
+                        if (File.Exists(Path.Join(base_directory, file)))
                         {
                             // Index for every file and the frame is the same,
                             // so use position of file for the frame
                             done.Add(client_response.frames[client_response.files.IndexOf(file)]);
+
+                            if (srf != null)
+                            {
+                                srf.Send_Update(client_response.frames[client_response.files.IndexOf(file)], "done");
+                            }
                         }
+
+                        else
+                        {
+                            bad.Add(client_response.frames[client_response.files.IndexOf(file)]);
+
+                            if (srf != null)
+                            {
+                                srf.Send_Update(client_response.frames[client_response.files.IndexOf(file)], "waiting");
+                            }
+                        }
+                    }
+
+                    log = string.Format("Frame {0} - {1} rendered!",
+                                        client_response.frames.First(),
+                                        client_response.frames.Last());
+                    lock (print_lock)
+                    {
+                        Console.WriteLine(log);
+                        Write_Log(log);
                     }
 
                     // Append the completed frames
                     Add_Frames_Done(done);
+                    // Append the bad frames
+                    Add_Frames(bad);
+
+                    //Update_View(progress_bar.Update_Progress_Bar(done.Count));
+                    lock (print_lock)
+                    {
+                        Console.WriteLine(progress_bar.Update_Progress_Bar(done.Count));
+                    }
                 }
             }
 
@@ -362,6 +553,11 @@ class Master
                 // Convert string to bytes
                 byte[] bytes_send = Encoding.UTF8.GetBytes(json_send);
 
+                lock (print_lock)
+                {
+                    Console.WriteLine("Received ping! Returning pong");
+                    Write_Log("Received ping! Returning pong");
+                }
 
                 client.Send(bytes_send);
             }
@@ -374,8 +570,11 @@ class Master
         catch (Exception e)
         {
             // Log errors
-            Console.WriteLine("An error occurred, trying to continue anyways... (see the log files for more details)");
-            Write_Log(e.ToString());
+            lock (print_lock)
+            {
+                Console.WriteLine("An error occurred, trying to continue anyways... (see the log files for more details)");
+                Write_Log(e.ToString());
+            }
         }
     }
     // Re-add frames to the frames remaining
@@ -416,7 +615,7 @@ class Master
 
         // If Client is not allowed to use engine
         // Don't give him frames
-        if (!requirements.allowed_engines.Contains(PROJECT.render_engine))
+        if (!requirements.allowed_engines.Contains(PROJECT.render_engine) && !requirements.allowed_engines.Contains("other"))
         {
             return empty_list;
         }
@@ -454,8 +653,8 @@ class Master
             // Set the first frame to the first frame left
             int first_frame = frames_left.Min();
 
-            // Itterate as long as we are within the chunk size
-            for (int chunk = 0; chunk < PROJECT.chunks*PROJECT.frame_step; chunk += PROJECT.frame_step)
+            // Itterate as long as we are within the batch size
+            for (int batch = 0; batch <= PROJECT.batch_size* PROJECT.frame_step; batch += PROJECT.frame_step)
             {
                 // If there are no frames left, return the picked ones
                 if (frames_left.Count == 0)
@@ -465,10 +664,10 @@ class Master
 
                 // If out frame is left, add it to the picked frames
                 // and remove it from the frames left
-                if (frames_left.Contains(first_frame + chunk))
+                if (frames_left.Contains(first_frame + batch))
                 {
-                    frames_picked.Add(first_frame + chunk);
-                    frames_left.Remove(first_frame + chunk);
+                    frames_picked.Add(first_frame + batch);
+                    frames_left.Remove(first_frame + batch);
                 }
 
                 // If there is not another continous frames
@@ -598,22 +797,47 @@ class Master
     // Print the top bar
     public static void Show_Top_Bar(List<string> addition = null)
     {
-        Console.WriteLine("Pidgeon Render Farm - Master");
-        Console.WriteLine("Join the Discord server for support - https://discord.gg/cnFdGQP");
-        Console.WriteLine("");
-
-        if (addition != null)
+        lock (print_lock)
         {
-            foreach (string line in addition)
+            Console.WriteLine("Pidgeon Render Farm - Master");
+            Console.WriteLine("Join the Discord server for support - https://discord.gg/cnFdGQP");
+            Console.WriteLine("");
+
+            if (addition != null)
             {
-                Console.WriteLine(line);
+                foreach (string line in addition)
+                {
+                    Console.WriteLine(line);
+                }
+
+                Console.WriteLine("");
             }
 
+            Console.WriteLine("#--------------------------------------------------------------#");
             Console.WriteLine("");
         }
+    }
 
-        Console.WriteLine("#--------------------------------------------------------------#");
-        Console.WriteLine("");
+    public static void Update_View(string progress_bar)
+    {
+        Console.Clear();
+        Show_Top_Bar(new List<string> {"Master IP address: " + ip_address_string
+                                       , "Master Port: " + SETTINGS.port.ToString()
+                                       , progress_bar});
+
+        foreach (string line in File.ReadLines(BACKUP_FILE))
+        {
+            Console.WriteLine(line);
+        }
+    }
+
+    public static void Print(string content)
+    {
+        lock (print_lock)
+        {
+            Console.WriteLine(content);
+            File.AppendAllText(BACKUP_FILE, content);
+        }
     }
     #endregion
 
@@ -661,6 +885,7 @@ class Master
         {
             Console.WriteLine("Please input the path to your blender executable");
             user_input = Console.ReadLine().Replace("\"", "");
+            user_input = user_input.Replace("'", "");
         }
         new_settings.blender_executable = user_input;
         Console.Clear();
@@ -759,28 +984,31 @@ class Master
         // Use Menu() to grab user input
         bool use_sfr = Parse_Bool(Menu(basic_bool, new List<string> { "Use SuperFastRender (with default settings) to optimize the rendering process?" }));
 
+        // Use SuperFastRender
+        // Use Menu() to grab user input
+        //new_project.use_sid_temporal = Parse_Bool(Menu(basic_bool, new List<string> { "Use SuperImageDenoiser Temporal (with default settings) for denoising?" }));
 
         // Render test frame (for time)
         // Use Menu() to grab user input
         bool test_render = Parse_Bool(Menu(basic_bool,
                                            new List<string> { "Render a test frame? (Will take some time, for client option 'Maximum time per frame')" }));
 
-        // Chunks
+        // Batch size
         // Let user input a valid size
         Show_Top_Bar();
-        Console.WriteLine("Chunk size (recommended to use with ZIP files):");
+        Console.WriteLine("Batch size:");
         user_input = Console.ReadLine();
         while (!int.TryParse(user_input, out _))
         {
             Console.WriteLine("Please input a whole number");
             user_input = Console.ReadLine();
         }
-        new_project.chunks = Math.Abs(int.Parse(user_input));
+        new_project.batch_size = Math.Abs(int.Parse(user_input));
         Console.Clear();
 
         // Use ZIP
         // Use Menu() to grab user input
-        //new_project.use_zip = Parse_Bool(Menu(basic_bool, new List<string> { "Zip/compress files before distributing? (might save some bandwitdh at the cost of image quality; recommended to use with chunks)" }));
+        //new_project.use_zip = Parse_Bool(Menu(basic_bool, new List<string> { "Zip/compress files before distributing? (might save some bandwitdh at the cost of image quality; recommended to use with Batches)" }));
 
         // Generate a video file
         // Use Menu() to grab user input
@@ -872,29 +1100,10 @@ class Master
         Console.WriteLine("Gathering informations of your project. This usually only takes a few seconds. Please wait...");
 
         // Create a command for blender to optain some variables
-        //string command = SETTINGS.blender_executable;
-        string args = "-b ";
-        args += new_project.full_path_blend;
-        args += " -P ";
-        args += "BPY.py";
-        args += " -- ";
-        args += PROJECT_DIRECTORY;
-        if (use_sfr)
-        {
-            args += " 1";
-        }
-        else
-        {
-            args += " 0";
-        }
-        if (test_render)
-        {
-            args += " 1";
-        }
-        else
-        {
-            args += " 0";
-        }
+        string args = string.Format("-b \"{0}\" -P BPY.py -- {1} {2}",
+                             new_project.full_path_blend,
+                             Bool_To_Int(use_sfr),
+                             Bool_To_Int(test_render));
 
         // Use Blender to obtain informations about the project
         // additionally use SFR if selected
@@ -916,8 +1125,10 @@ class Master
         }
 
         // Read the output
-        string json_string = File.ReadAllText(Path.Join(PROJECT_DIRECTORY, "vars.json"));
+        string json_string = File.ReadAllText(Path.Join(Path.GetDirectoryName(new_project.full_path_blend), "vars.json"));
         Project_Data project_data = JsonSerializer.Deserialize<Project_Data>(json_string);
+
+        File.Delete(Path.Join(Path.GetDirectoryName(new_project.full_path_blend), "vars.json"));
 
         // Apply the values to project object
         new_project.blender_version = project_data.blender_version;
@@ -934,6 +1145,15 @@ class Master
         {
             frames_left.Add(frame);
             new_project.frames_total++;
+        }
+
+        // If the file exsists add it to list
+        string file = "frame_" + new_project.first_frame.ToString().PadLeft(6, '0') + "." + new_project.output_file_format;
+        if (File.Exists(Path.Join(Path.GetDirectoryName(new_project.full_path_blend), file)))
+        {
+            File.Move(Path.Join(Path.GetDirectoryName(new_project.full_path_blend), file), Path.Join(PROJECT_DIRECTORY, file));
+            frames_left.Remove(new_project.first_frame);
+            new_project.frames_complete.Add(new_project.first_frame);
         }
 
         // Save the project
@@ -986,7 +1206,7 @@ class Master
 
         // Add all frames left to render
         frames_left = new List<int>();
-        for (int frame = PROJECT.first_frame; frame < PROJECT.last_frame; frame += PROJECT.frame_step)
+        for (int frame = PROJECT.first_frame; frame <= PROJECT.last_frame; frame += PROJECT.frame_step)
         {
             if (!PROJECT.frames_complete.Contains(frame))
             {
@@ -1018,16 +1238,25 @@ class Master
 
             // Add all frames left to render
             frames_left = new List<int>();
-            for (int frame = PROJECT.first_frame; frame < PROJECT.last_frame; frame += PROJECT.frame_step)
+            for (int frame = PROJECT.first_frame; frame <= PROJECT.last_frame; frame += PROJECT.frame_step)
             {
-                if (!PROJECT.frames_complete.Contains(frame))
-                {
-                    frames_left.Add(frame);
-                }
+                frames_left.Add(frame);
+            }
+
+            // If the file exsists add it to list
+            string file = "frame_" + PROJECT.first_frame.ToString().PadLeft(6, '0') + "." + PROJECT.output_file_format;
+            if (File.Exists(Path.Join(SCRIPT_DIRECTORY, file)))
+            {
+                File.Move(Path.Join(SCRIPT_DIRECTORY, file), Path.Join(PROJECT_DIRECTORY, file));
+
+                frames_left.Remove(PROJECT.first_frame);
+                Add_Frames_Done(new List<int>{ PROJECT.first_frame });
             }
 
             // Save the project
             Save_Project();
+
+            use_srf = false;
 
             Render_Project();
         }
@@ -1073,7 +1302,6 @@ class Master
             if (SETTINGS.collect_data)
             {
                 // Gather informations and add to data object
-                new_data.version = VERSION;
                 new_data.os = System.Runtime.InteropServices.RuntimeInformation.OSDescription;
             }
 
@@ -1189,14 +1417,118 @@ class Master
         // If not connected only use local IP
         return IPAddress.Parse("127.0.0.1");
     }
+
+    public static int Bool_To_Int(bool input)
+    {
+        if (input)
+        {
+            return 1;
+        }
+
+        return 0;
+    }
     #endregion
+}
+
+public class SRF
+{
+    public Socket srf_client;
+
+    public SRF(Socket client)
+    {
+        srf_client = client;
+    }
+
+    public void Send_Update(int frame, string state)
+    {
+        // Convert the object to string
+        string json_send = frame.ToString() + "|" + state;
+        // Convert string to bytes
+        byte[] bytes_send = Encoding.UTF8.GetBytes(json_send);
+        // Send bytes to client
+        srf_client.Send(bytes_send);
+
+        // Receive message from client
+        byte[] buffer = new byte[64];
+        srf_client.Receive(buffer);
+    }
+
+    public void Finish()
+    {
+        srf_client.Shutdown(SocketShutdown.Both);
+        srf_client.Close();
+    }
+}
+
+public class Progress_Bar
+{
+    public int progress;
+    public int goal;
+
+    public string i;
+    public char b;
+    public char p_c;
+    public char l_c;
+
+    public Progress_Bar(int part, int max, string info = "", char border = '|', char progress_char = '#', char left_char = ' ')
+    {
+        progress = part;
+        goal = max;
+        i = info;
+        b = border;
+        p_c = progress_char;
+        l_c = left_char;
+    }
+
+    public string Get_Progress_Bar()
+    {
+        float percent = (progress / 1.0f) / (goal / 1.0f) * 100;
+        int percent_rounded = (int)Math.Round(percent);
+        int bar_max = Console.WindowWidth - 6 - i.Length;
+        int bar_factor = (int)Math.Floor(bar_max / 1.0f / goal);
+
+        //100%|########|
+        // 50%|####    |
+        //  0%|        |
+
+        string bar = i;
+        bar += percent_rounded.ToString().PadLeft(3, ' ') + "%";
+        bar += b;
+        bar += string.Concat(Enumerable.Repeat(p_c, progress * bar_factor));
+        bar += "".PadRight((goal - progress) * bar_factor, l_c);
+        bar += b;
+
+        return bar;
+    }
+
+    public string Update_Progress_Bar(int step)
+    {
+        progress += step;
+        float percent = (progress / 1.0f) / (goal / 1.0f) * 100;
+        int percent_rounded = (int)Math.Round(percent);
+        int bar_max = Console.WindowWidth - 6 - i.Length;
+        int bar_factor = (int)Math.Floor(bar_max / 1.0f / goal);
+
+        //100%|########|
+        // 50%|####    |
+        //  0%|        |
+
+        string bar = i;
+        bar += percent_rounded.ToString().PadLeft(3, ' ') + "%";
+        bar += b;
+        bar += string.Concat(Enumerable.Repeat(p_c, progress * bar_factor));
+        bar += "".PadRight((goal - progress) * bar_factor, l_c);
+        bar += b;
+
+        return bar;
+    }
 }
 
 #region Objects
 // Settings object class
 public class Settings
 {
-    public float version { get; set; } = 0.0f;
+    public string version { get; set; } = "0.0.0";
     public int port { get; set; } = 8080;
     public string blender_executable { get; set; }
     public string ffmpeg_executable { get; set; }
@@ -1212,6 +1544,7 @@ public class Project
     public string id { get; set; }
     public string blender_version { get; set; }
     public string full_path_blend { get; set; }
+    public bool use_sid_temporal { get; set; } = false;
     public string render_engine { get; set; }
     public string output_file_format { get; set; }
     public bool video_generate { get; set; }
@@ -1221,13 +1554,12 @@ public class Project
     public bool video_resize { get; set; }
     public int video_x { get; set; }
     public int video_y { get; set; }
-    public int chunks { get; set; } = 0;
-    public bool use_zip { get; set; } = true;
+    public int batch_size { get; set; } = 0;
     public float time_per_frame { get; set; }
     public int ram_use { get; set; } = 0;
     public int first_frame { get; set; }
     public int last_frame { get; set; }
-    public int frame_step { get; set; }
+    public int frame_step { get; set; } = 1;
     public int frames_total { get; set; }
     public List<int> frames_complete { get; set; } = new List<int>();
 }
@@ -1251,14 +1583,14 @@ public class Master_Response
 {
     public string message { get; set; }
     public bool use_ftp { get; set; } = false;
-    public bool use_zip { get; set; }
+    public bool use_sid_temporal { get; set; } = false;
     public string id { get; set; }
     public float file_size { get; set; }
     public string render_engine { get; set; }
     public string file_format { get; set; }
     public int first_frame { get; set; }
     public int last_frame { get; set; }
-    public int frame_step { get; set; }
+    public int frame_step { get; set; } = 1;
 
 }
 
@@ -1278,7 +1610,6 @@ public class Project_Data
 // PRF_Data object class
 public class PRF_Data
 {
-    public float version { get; set; } = 0.0f;
     public string os { get; set; } = "No data";
     public List<string> cpus { get; set; } = new List<string> { "No data" };
     public List<string> gpus { get; set; } = new List<string> { "No data" };
