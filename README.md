@@ -88,6 +88,9 @@ Remember, you may need to configure your firewall settings to allow Pidgeon Rend
 Remember, each step in the setup process is crucial to ensure that your project renders correctly. If you encounter any issues, refer to the troubleshooting section of the Pidgeon Render Farm documentation or reach out to their support team.
 
 ## Troubleshooting
+### Windows: Pidgeon Render Farm won't start
+Since PRF is built using C#, which uses the dotnet-SDK, you will need to install the .NET 6.0 Runtime. You can download it from (here)[https://dotnet.microsoft.com/download/dotnet/6.0]. To learn more please visit the (FAQ)[https://github.com/PidgeonTools/PidgeonRenderFarm#what-is-dotnet-net].
+
 ### Server socket won't start
 In most cases this is due to the settings of your **firewall**. You can see if it is the case for you by following the steps below. If that doesn't work visit our [Discord Server](https://discord.gg/cnFdGQP).
 
@@ -112,6 +115,10 @@ It is the easiest to just dissable the firewall entirely.
 [Do you have questions? Join the Discord!](https://discord.gg/cnFdGQP)
 
 ## FAQ
+### What is dotnet (.NET)?
+".NET is an open source developer platform, created by Microsoft, for building many different types of applications."
+It is required in order to execute PRF, but there are binaries including .NET, so you don't have to install it on your system. If you don't feel like downloading up to 50 MB per update extra, then we recommend to (install the .NET 6.0 Runtime)[https://dotnet.microsoft.com/download/dotnet/6.0]. The MacOS and Linux versions ship with dotnet.
+
 ### Why should I turn logging on?
 Logging helps in troubleshooting by recording the errors thrown by the compiler. It's recommended to keep it on to help resolve any issues that may arise.
 
