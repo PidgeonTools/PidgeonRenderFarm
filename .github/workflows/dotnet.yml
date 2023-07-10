@@ -28,7 +28,7 @@ jobs:
     - name: Build Linux x64
       run: dotnet publish ./Client/Client.csproj --configuration Release --self-contained true --runtime linux-x64
     - name: Move Linux bins
-      run: mv -r ./Client/bin/Release/net6.0/linux-x64/publish ./PRF_Client_Linux
+      run: mv ./Client/bin/Release/net6.0/linux-x64/publish ./PRF_Client_Linux
     - name: Copy LICENSE to Linux
       run: cp LICENSE ./PRF_Client_Linux
     - name: Copy Get_Engines to Linux
@@ -39,7 +39,7 @@ jobs:
     - name: Build Windows x64 - self contained
       run: dotnet publish ./Client/Client.csproj --configuration Release --self-contained true --runtime win-x64
     - name: Move Windows bins
-      run: mv -r ./Client/bin/Release/net6.0/win-x64/publish ./PRF_Client_Windows
+      run: mv ./Client/bin/Release/net6.0/win-x64/publish ./PRF_Client_Windows
     - name: Copy LICENSE to Windows
       run: cp LICENSE ./PRF_Client_Windows
     - name: Copy Get_Engines to Windows
@@ -61,7 +61,7 @@ jobs:
     - name: Build Linux x64
       run: dotnet publish ./Master/Master.csproj --configuration Release --self-contained true --runtime linux-x64
     - name: Move Linux bins
-      run: mv -r ./Master/bin/Release/net6.0/linux-x64/publish ./PRF_Master_Linux
+      run: mv ./Master/bin/Release/net6.0/linux-x64/publish ./PRF_Master_Linux
     - name: Copy LICENSE to Linux
       run: cp LICENSE ./PRF_Master_Linux
     - name: Copy BPY to Linux
@@ -72,7 +72,7 @@ jobs:
     - name: Build Windows x64 - self contained
       run: dotnet publish ./Master/Master.csproj --configuration Release --self-contained true --runtime win-x64
     - name: Move Windows bins
-      run: mv -r ./Master/bin/Release/net6.0/win-x64/publish ./PRF_Master_Windows
+      run: mv ./Master/bin/Release/net6.0/win-x64/publish ./PRF_Master_Windows
     - name: Copy LICENSE to Windows
       run: cp LICENSE ./PRF_Master_Windows
     - name: Copy BPY to Windows
