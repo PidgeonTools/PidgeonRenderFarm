@@ -1,0 +1,81 @@
+# This workflow will build a .NET project
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-net
+
+name: .NET
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  Client:
+    name: Build Pidgeon Render Farm Client
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: 6.0.x
+        
+    #- name: Build MacOS x64
+    #  run: dotnet publish --configuration Release --self-contained true --runtime win-x64
+    #- name: Build Windows x64
+    #  run: dotnet publish --configuration Release --self-contained false --runtime win-x64
+        
+    - name: Build Linux x64
+      run: dotnet publish ./Client/Client.csproj --configuration Release --self-contained true --runtime linux-x64
+    - name: Move Linux bins
+      run: mv -r ./Client/bin/Release/net6.0/linux-x64/publish ./PRF_Client_Linux
+    - name: Copy LICENSE to Linux
+      run: cp LICENSE ./PRF_Client_Linux
+    - name: Copy Get_Engines to Linux
+      run: cp ./Client/Get_Engines.py ./PRF_Client_Linux
+    - name: Compress Linux
+      run: zip -r PRF_Client_Linux.zip PRF_Client_Linux
+    
+    - name: Build Windows x64 - self contained
+      run: dotnet publish ./Client/Client.csproj --configuration Release --self-contained true --runtime win-x64
+    - name: Move Windows bins
+      run: mv -r ./Client/bin/Release/net6.0/win-x64/publish ./PRF_Client_Windows
+    - name: Copy LICENSE to Windows
+      run: cp LICENSE ./PRF_Client_Windows
+    - name: Copy Get_Engines to Windows
+      run: cp ./Client/Get_Engines.py ./PRF_Client_Windows
+    - name: Compress Windows
+      run: zip -r PRF_Client_Windows.zip PRF_Client_Windows
+    
+  Master:
+    name: Build Pidgeon Render Farm Master
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: 6.0.x
+        
+    - name: Build Linux x64
+      run: dotnet publish ./Master/Master.csproj --configuration Release --self-contained true --runtime linux-x64
+    - name: Move Linux bins
+      run: mv -r ./Master/bin/Release/net6.0/linux-x64/publish ./PRF_Master_Linux
+    - name: Copy LICENSE to Linux
+      run: cp LICENSE ./PRF_Master_Linux
+    - name: Copy BPY to Linux
+      run: cp ./Master/BPY.py ./PRF_Master_Linux
+    - name: Compress Linux
+      run: zip -r PRF_Master_Linux.zip PRF_Master_Linux
+    
+    - name: Build Windows x64 - self contained
+      run: dotnet publish ./Master/Master.csproj --configuration Release --self-contained true --runtime win-x64
+    - name: Move Windows bins
+      run: mv -r ./Master/bin/Release/net6.0/win-x64/publish ./PRF_Master_Windows
+    - name: Copy LICENSE to Windows
+      run: cp LICENSE ./PRF_Master_Windows
+    - name: Copy BPY to Windows
+      run: cp ./Master/BPY.py ./PRF_Master_Windows
+    - name: Compress Windows
+      run: zip -r PRF_Master_Windows.zip PRF_Master_Windows
