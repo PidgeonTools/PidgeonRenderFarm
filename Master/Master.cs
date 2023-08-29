@@ -986,7 +986,7 @@ class Master
 
         // Use SuperFastRender
         // Use Menu() to grab user input
-        //new_project.use_sid_temporal = Parse_Bool(Menu(basic_bool, new List<string> { "Use SuperImageDenoiser Temporal (with default settings) for denoising?" }));
+        new_project.use_sid_temporal = Parse_Bool(Menu(basic_bool, new List<string> { "Use SuperImageDenoiser Temporal (with default settings) for denoising? You will lose 1 frame at the start and 2 frames at the end of your animation." }));
 
         // Render test frame (for time)
         // Use Menu() to grab user input
