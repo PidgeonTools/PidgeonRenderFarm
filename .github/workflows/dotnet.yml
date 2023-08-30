@@ -1,81 +1,282 @@
-# This workflow will build a .NET project
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-net
+# This workflow builds the binaries for Pidgeon Render Farm
 
-name: .NET
+name: Build PRF Binaries
 
 on:
-  push:
-    branches: [ "main" ]
+  #label:
+  #  types:
+  #    - created
   workflow_dispatch:
+    inputs:
+      Windows:
+        type: boolean
+        description: 'Build Windows x64'
+        required: true
+        default: false
+      Windows_ARM:
+        type: boolean
+        description: 'Build Windows ARM'
+        required: true
+        default: false
+        
+      Linux:
+        type: boolean
+        description: 'Build Linux x64'
+        required: true
+        default: true
+      Linux_ARM:
+        type: boolean
+        description: 'Build Linux ARM'
+        required: true
+        default: false
+        
+      Mac:
+        type: boolean
+        description: 'Build MacOS x64'
+        required: true
+        default: false
+      Mac_ARM:
+        type: boolean
+        description: 'Build MacOS ARM'
+        required: true
+        default: false
 
 jobs:
-  Client:
-    name: Build Pidgeon Render Farm Client
+  Build:
+    # use Ubuntu as OS
+    name: Build PRF Binaries
     runs-on: ubuntu-latest
 
     steps:
+    # Using dotnet 6
     - uses: actions/checkout@v3
     - name: Setup .NET
       uses: actions/setup-dotnet@v3
       with:
         dotnet-version: 6.0.x
-        
-    #- name: Build MacOS x64
-    #  run: dotnet publish --configuration Release --self-contained true --runtime win-x64
-    #- name: Build Windows x64
-    #  run: dotnet publish --configuration Release --self-contained false --runtime win-x64
-        
-    - name: Build Linux x64
-      run: dotnet publish ./Client/Client.csproj --configuration Release --self-contained true --runtime linux-x64
-    - name: Move Linux bins
-      run: mv ./Client/bin/Release/net6.0/linux-x64/publish ./PRF_Client_Linux
-    - name: Copy LICENSE to Linux
-      run: cp LICENSE ./PRF_Client_Linux
-    - name: Copy Get_Engines to Linux
-      run: cp ./Client/Get_Engines.py ./PRF_Client_Linux
-    - name: Compress Linux
-      run: zip -r PRF_Client_Linux.zip PRF_Client_Linux
     
-    - name: Build Windows x64 - self contained
+    # Build Windows x64 Client
+    - name: Build Windows x64 - Client
+      if: inputs.Windows
       run: dotnet publish ./Client/Client.csproj --configuration Release --self-contained true --runtime win-x64
-    - name: Move Windows bins
+    - name: Move Windows bins - Client
+      if: inputs.Windows
       run: mv ./Client/bin/Release/net6.0/win-x64/publish ./PRF_Client_Windows
-    - name: Copy LICENSE to Windows
+    - name: Copy LICENSE to Windows - Client
+      if: inputs.Windows
       run: cp LICENSE ./PRF_Client_Windows
-    - name: Copy Get_Engines to Windows
+    - name: Copy Get_Engines to Windows - Client
+      if: inputs.Windows
       run: cp ./Client/Get_Engines.py ./PRF_Client_Windows
-    - name: Compress Windows
+    - name: Compress Windows - Client
+      if: inputs.Windows
       run: zip -r PRF_Client_Windows.zip PRF_Client_Windows
-    
-  Master:
-    name: Build Pidgeon Render Farm Master
-    runs-on: ubuntu-latest
-
-    steps:
-    - uses: actions/checkout@v3
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v3
-      with:
-        dotnet-version: 6.0.x
+      
+    # Build Windows ARM Client
+    - name: Build Windows ARM - Client
+      if: inputs.Windows_ARM
+      run: dotnet publish ./Client/Client.csproj --configuration Release --self-contained true --runtime win-arm
+    - name: Move Windows ARM bins - Client
+      if: inputs.Windows_ARM
+      run: mv ./Client/bin/Release/net6.0/win-arm/publish ./PRF_Client_Windows_ARM
+    - name: Copy LICENSE to Windows ARM - Client
+      if: inputs.Windows_ARM
+      run: cp LICENSE ./PRF_Client_Windows_ARM
+    - name: Copy Get_Engines to Windows ARM - Client
+      if: inputs.Windows_ARM
+      run: cp ./Client/Get_Engines.py ./PRF_Client_Windows_ARM
+    - name: Compress Windows ARM - Client
+      if: inputs.Windows_ARM
+      run: zip -r PRF_Client_Windows_ARM.zip PRF_Client_Windows_ARM
         
-    - name: Build Linux x64
-      run: dotnet publish ./Master/Master.csproj --configuration Release --self-contained true --runtime linux-x64
-    - name: Move Linux bins
-      run: mv ./Master/bin/Release/net6.0/linux-x64/publish ./PRF_Master_Linux
-    - name: Copy LICENSE to Linux
-      run: cp LICENSE ./PRF_Master_Linux
-    - name: Copy BPY to Linux
-      run: cp ./Master/BPY.py ./PRF_Master_Linux
-    - name: Compress Linux
-      run: zip -r PRF_Master_Linux.zip PRF_Master_Linux
+    # Build Linux x64 client
+    - name: Build Linux x64 - Client
+      if: inputs.Linux
+      run: dotnet publish ./Client/Client.csproj --configuration Release --self-contained true --runtime linux-x64
+    - name: Move Linux bins - Client
+      if: inputs.Linux
+      run: mv ./Client/bin/Release/net6.0/linux-x64/publish ./PRF_Client_Linux
+    - name: Copy LICENSE to Linux - Client
+      if: inputs.Linux
+      run: cp LICENSE ./PRF_Client_Linux
+    - name: Copy Get_Engines to Linux - Client
+      if: inputs.Linux
+      run: cp ./Client/Get_Engines.py ./PRF_Client_Linux
+    - name: Compress Linux - Client
+      if: inputs.Linux
+      run: zip -r PRF_Client_Linux.zip PRF_Client_Linux
+      
+    # Build Linux ARM Client
+    - name: Build Linux ARM - Client
+      if: inputs.Linux_ARM
+      run: dotnet publish ./Client/Client.csproj --configuration Release --self-contained true --runtime linux-arm
+    - name: Move Linux ARM bins - Client
+      if: inputs.Linux_ARM
+      run: mv ./Client/bin/Release/net6.0/linux-arm/publish ./PRF_Client_Linux_ARM
+    - name: Copy LICENSE to Linux ARM - Client
+      if: inputs.Linux_ARM
+      run: cp LICENSE ./PRF_Client_Linux_ARM
+    - name: Copy Get_Engines to Linux ARM - Client
+      if: inputs.Linux_ARM
+      run: cp ./Client/Get_Engines.py ./PRF_Client_Linux_ARM
+    - name: Compress Linux ARM - Client
+      if: inputs.Linux_ARM
+      run: zip -r PRF_Client_Linux_ARM.zip PRF_Client_Linux_ARM
+      
+    # Build Mac x64 Client
+    - name: Build Mac x64 - Client
+      if: inputs.Mac
+      run: dotnet publish ./Client/Client.csproj --configuration Release --self-contained true --runtime osx-x64
+    - name: Move Mac bins - Client
+      if: inputs.Mac
+      run: mv ./Client/bin/Release/net6.0/osx-x64/publish ./PRF_Client_Mac
+    - name: Copy LICENSE to Mac - Client
+      if: inputs.Mac
+      run: cp LICENSE ./PRF_Client_Mac
+    - name: Copy Get_Engines to Mac - Client
+      if: inputs.Mac
+      run: cp ./Client/Get_Engines.py ./PRF_Client_Mac
+    - name: Compress Mac - Client
+      if: inputs.Mac
+      run: zip -r PRF_Client_Mac.zip PRF_Client_Mac
     
-    - name: Build Windows x64 - self contained
+    # Build Mac ARM Client
+    - name: Build Mac ARM - Client
+      if: inputs.Mac_ARM
+      run: dotnet publish ./Client/Client.csproj --configuration Release --self-contained true --runtime osx-arm64
+    - name: Move Mac ARM bins - Client
+      if: inputs.Mac_AMR
+      run: mv ./Client/bin/Release/net6.0/osx-arm64/publish ./PRF_Client_Mac_ARM
+    - name: Copy LICENSE to Mac ARM - Client
+      if: inputs.Mac_ARM
+      run: cp LICENSE ./PRF_Client_Mac_ARM
+    - name: Copy Get_Engines to Mac ARM - Client
+      if: inputs.Mac_ARM
+      run: cp ./Client/Get_Engines.py ./PRF_Client_Mac_ARM
+    - name: Compress Mac ARM - Client
+      if: inputs.Mac_ARM
+      run: zip -r PRF_Client_Mac_ARM.zip PRF_Client_Mac_ARM
+
+    # Build Master
+    
+    # Build Windows x64 Master
+    - name: Build Windows x64 - Master
+      if: inputs.Windows
       run: dotnet publish ./Master/Master.csproj --configuration Release --self-contained true --runtime win-x64
-    - name: Move Windows bins
+    - name: Move Windows bins - Master
+      if: inputs.Windows
       run: mv ./Master/bin/Release/net6.0/win-x64/publish ./PRF_Master_Windows
-    - name: Copy LICENSE to Windows
+    - name: Copy LICENSE to Windows - Master
+      if: inputs.Windows
       run: cp LICENSE ./PRF_Master_Windows
-    - name: Copy BPY to Windows
+    - name: Copy BPY to Windows - Master
+      if: inputs.Windows
       run: cp ./Master/BPY.py ./PRF_Master_Windows
-    - name: Compress Windows
+    - name: Compress Windows - Master
+      if: inputs.Windows
       run: zip -r PRF_Master_Windows.zip PRF_Master_Windows
+      
+    # Build Windows ARM Master
+    - name: Build Windows ARM - Master
+      if: inputs.Windows_ARM
+      run: dotnet publish ./Master/Master.csproj --configuration Release --self-contained true --runtime win-arm
+    - name: Move Windows ARM bins - Master
+      if: inputs.Windows_ARM
+      run: mv ./Master/bin/Release/net6.0/win-arm/publish ./PRF_Master_Windows_ARM
+    - name: Copy LICENSE to Windows ARM - Master
+      if: inputs.Windows_ARM
+      run: cp LICENSE ./PRF_Master_Windows_ARM
+    - name: Copy BPY to Windows ARM - Master
+      if: inputs.Windows_ARM
+      run: cp ./Master/BPY.py ./PRF_Master_Windows_ARM
+    - name: Compress Windows ARM - Master
+      if: inputs.Windows_ARM
+      run: zip -r PRF_Master_Windows_ARM.zip PRF_Master_Windows_ARM
+        
+    # Build Linux x64 Master
+    - name: Build Linux x64 - Master
+      if: inputs.Linux
+      run: dotnet publish ./Master/Master.csproj --configuration Release --self-contained true --runtime linux-x64
+    - name: Move Linux bins - Master
+      if: inputs.Linux
+      run: mv ./Master/bin/Release/net6.0/linux-x64/publish ./PRF_Master_Linux
+    - name: Copy LICENSE to Linux - Master
+      if: inputs.Linux
+      run: cp LICENSE ./PRF_Master_Linux
+    - name: Copy BPY to Linux - Master
+      if: inputs.Linux
+      run: cp ./Master/BPY.py ./PRF_Master_Linux
+    - name: Compress Linux - Master
+      if: inputs.Linux
+      run: zip -r PRF_Master_Linux.zip PRF_Master_Linux
+      
+    # Build Linux ARM Master
+    - name: Build Linux ARM - Master
+      if: inputs.Linux_ARM
+      run: dotnet publish ./Master/Master.csproj --configuration Release --self-contained true --runtime linux-arm
+    - name: Move Linux ARM bins - Master
+      if: inputs.Linux_ARM
+      run: mv ./Master/bin/Release/net6.0/linux-arm/publish ./PRF_Master_Linux_ARM
+    - name: Copy LICENSE to Linux ARM - Master
+      if: inputs.Linux_ARM
+      run: cp LICENSE ./PRF_Master_Linux_ARM
+    - name: Copy BPY to Linux ARM - Master
+      if: inputs.Linux_ARM
+      run: cp ./Master/BPY.py ./PRF_Master_Linux_ARM
+    - name: Compress Linux ARM - Master
+      if: inputs.Linux_ARM
+      run: zip -r PRF_Master_Linux_ARM.zip PRF_Master_Linux_ARM
+      
+    # Build Max x64 Master
+    - name: Build Mac x64 - Master
+      if: inputs.Mac
+      run: dotnet publish ./Master/Master.csproj --configuration Release --self-contained true --runtime osx-x64
+    - name: Move Mac bins - Master
+      if: inputs.Mac
+      run: mv ./Master/bin/Release/net6.0/osx-x64/publish ./PRF_Master_Mac
+    - name: Copy LICENSE to Mac - Master
+      if: inputs.Mac
+      run: cp LICENSE ./PRF_Master_Mac
+    - name: Copy BPY to Mac - Master
+      if: inputs.Mac
+      run: cp ./Master/BPY.py ./PRF_Master_Mac
+    - name: Compress Mac - Master
+      if: inputs.Mac
+      run: zip -r PRF_Master_Mac.zip PRF_Master_Mac
+
+    # Build Mac ARM Master
+    - name: Build Mac ARM - Master
+      if: inputs.Mac_ARM
+      run: dotnet publish ./Master/Master.csproj --configuration Release --self-contained true --runtime osx-arm64
+    - name: Move Mac ARM bins - Master
+      if: inputs.Mac_ARM
+      run: mv ./Master/bin/Release/net6.0/osx-arm64/publish ./PRF_Master_Mac_ARM
+    - name: Copy LICENSE to Mac ARM - Master
+      if: inputs.Mac_ARM
+      run: cp LICENSE ./PRF_Master_Mac_ARM
+    - name: Copy BPY to Mac ARM - Master
+      if: inputs.Mac_ARM
+      run: cp ./Master/BPY.py ./PRF_Master_Mac_ARM
+    - name: Compress Mac ARM - Master
+      if: inputs.Mac_ARM
+      run: zip -r PRF_Master_Mac_ARM.zip PRF_Master_Mac_ARM
+
+    # Add binaries to a draft release
+    # If a binary/zip file is not found it is not included
+    - name: Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          PRF_Client_Windows.zip
+          PRF_Client_Windows_ARM.zip
+          PRF_Client_Linux.zip
+          PRF_Client_Linux_ARM.zip
+          PRF_Client_Mac.zip
+          PRF_Client_Mac_ARM.zip
+          PRF_Master_Windows.zip
+          PRF_Master_Windows_ARM.zip
+          PRF_Master_Linux.zip
+          PRF_Master_Linux_ARM.zip
+          PRF_Master_Mac.zip
+          PRF_Master_Mac_ARM.zip
+        draft: true
