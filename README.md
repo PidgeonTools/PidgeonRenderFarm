@@ -31,16 +31,16 @@ By choosing Pidgeon Render Farm, you're choosing a solution that's secure, custo
 [Roadmap](https://github.com/PidgeonTools/PidgeonRenderFarm/milestones)
 
 ## Requirements
-- **RAM:**        <50 MB + RAM for Blender
-- **Storage:**    ~200 kb (for Client and Master each) + storage for projects
+- **RAM:**        <50 MB RAM + RAM for Blender
+- **Storage:**    ~60 MB (for Client and Master each) + storage for projects
 - **Network:**    **No internet** connection required, just a local network
 
 ### Operating System
-Modern **Windows** (7 and above) and **Linux** are actively supported. MacOS binaries are not aviable, as we want to ensure that you receive a tested product. You can still obtain the bins by asking on [our Discord server](https://discord.gg/cnFdGQP)
+Modern **Windows** (10 and above) and **Linux** are actively supported. MacOS binaries are not aviable, as we want to ensure that you receive a tested product. You can still obtain the bins by asking on [our Discord server](https://discord.gg/cnFdGQP)
 
 ## Future Plans
-- [ ] Support for software other than Blender
-- [ ] ❗ Support for **Multiple Blender** versions
+- [ ] ⏱️Support for software other than Blender
+- [x] ❗ Support for **Multiple Blender** versions
 - [x] ❗ Rework render engine system
 - [ ] Support for **custom Blender builds** (e.g. E-Cycles)
 - [x] ❗ Support for **custom render engines** (e.g. Radeon Pro Render)
@@ -67,3 +67,6 @@ The installation guide moved [here](QUICK_START.md), Troubleshooting moved [here
 
 ### Note
 You may have to configure your firewall. [See troubleshooting section for more details](TROUBLESHOOTING.md#server-socket-wont-start).
+
+## Want to actively support the development of Pidgeon Render Farm?
+We prepared [this page](DEVELOPER.md) to get you started. Have a look!

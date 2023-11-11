@@ -10,44 +10,60 @@ class Client
     #region Global Variables
     // Initialize global variables
     // Initialize global File names, directories
-    public static string SCRIPT_DIRECTORY = Path.GetDirectoryName(System.Reflection.Assembly.GetEntryAssembly().Location);
-    public static string LOGS_DIRECTORY = "";
-    public static string LOGS_FILE = "";
-    public static string PROJECT_DIRECTORY = "";
-    public static string SETTINGS_FILE = "";
-    public static string DATA_FILE = "";
+    public static string Bin_Directory = Path.GetDirectoryName(System.Reflection.Assembly.GetEntryAssembly().Location);
+    public static string Database_Directory = "";
+    public static string Project_Directory = "";
 
     // Create global objects and variables
-    public static string VERSION = "0.1.0-beta";
-    public static Settings SETTINGS;
-    public static PRF_Data PRF_DATA;
+    public static string IP_Address_String = "127.0.0.1";
+    public static ClientSettings Settings;
+    private static object Log_DB_Lock = new object();
+    public static ProgressBar Progress_Bar;
+
+    public static WebClient Web_Client;
+
+    private static SettingsFileHandler Settings_File_Handler;
     #endregion
 
     // Runs at start
     static void Main(string[] args)
     {
-        // log the start time
-        DateTime start_time = DateTime.Now;
-
+        Client client = new Client();
+        client.Start(args);
+    }
+    public void Start(string[] args)
+    {
         // Get log directory name and create it
-        LOGS_DIRECTORY = Path.Join(SCRIPT_DIRECTORY, "logs");
-        if (!Directory.Exists(LOGS_DIRECTORY))
+        Database_Directory = Path.Join(Bin_Directory, "Database");
+        if (!Directory.Exists(Database_Directory))
         {
-            Directory.CreateDirectory(LOGS_DIRECTORY);
+            Directory.CreateDirectory(Database_Directory);
         }
 
-        // Get the name for the current log, settings and data
-        LOGS_FILE = Path.Join(LOGS_DIRECTORY, ("client_" + start_time.ToString("HH_mm_ss") + ".txt"));
-        SETTINGS_FILE = Path.Join(SCRIPT_DIRECTORY, "client_settings.json");
-        DATA_FILE = Path.Join(SCRIPT_DIRECTORY, "client_data.json");
+        Settings_File_Handler = new SettingsFileHandler(Path.Join(Bin_Directory, "client_settings.json"));
+        try
+        {
+            Settings = Settings_File_Handler.Load_Client_Settings();
+        }
+        catch (FileNotFoundException)
+        {
+            // Run setup
+            First_Time_Setup();
+        }
+        catch (FileLoadException)
+        {
+            // Run setup
+            First_Time_Setup();
+        }
 
-        // Main loop start
-        Load_Settings();
-        Collect_Data();
+        DBHandler.Initialize(Settings.Database_Connection);
+
+        new SystemInfo(Settings.Allow_Data_Collection, Bin_Directory);
+
         Main_Menu();
     }
 
-    public static void Main_Menu()
+    public void Main_Menu()
     {
         // Create list with all options and hand it to Menu()
         List<string> items = new List<string>
@@ -60,10 +76,12 @@ class Client
             "Exit"
         };
 
+        Menu menu = new Menu(items, "Client");
+
         while (true)
         {
             // Show the Menu and grab the selection
-            string selection = Menu(items, new List<string> { });
+            string selection = menu.Show();
 
             // Compare selection with options and execute function
             if (selection == items[0])
@@ -105,377 +123,412 @@ class Client
     }
 
     // Main thread
-    public static void Worker()
+    public void Worker()
     {
-        try
-        {
-            IPAddress ip_address = Get_IPv4();
-            Show_Top_Bar(new List<string> { "Client IP address: " + ip_address.ToString() });
-        }
-        catch
-        {
-            Show_Top_Bar();
-        }
+        Display.Show_Top_Bar("Client", new List<string> { $"Client IP address: {Helpers.Get_IPv4()}" });
 
-        // Repeat forever (is gonna change)
+        int rendered_frames = 0;
+        DateTime start_time = DateTime.Now;
+        int failed_connections = 0;
+
         while (true)
         {
-            try
+            #region Shutdown Parameters
+            if (Settings.Shutdown_Parameters.Rendered_Frames != 0)
             {
-                // Parse master ip
-                IPAddress ip_address = IPAddress.Parse(SETTINGS.masters[0].ip);
-                // Add master as end point using ip and port
-                IPEndPoint remote_end_point = new IPEndPoint(ip_address, SETTINGS.masters[0].port);
-                // Socket for connection -> TCP
-                Socket connection = new Socket(ip_address.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
-
-                try
+                if (rendered_frames >= Settings.Shutdown_Parameters.Rendered_Frames)
                 {
-                    string log = "";
+                    break;
+                }
+            }
+            if (Settings.Shutdown_Parameters.Time != new TimeSpan(0))
+            {
+                if (DateTime.Now - start_time >= Settings.Shutdown_Parameters.Time)
+                {
+                    break;
+                }
+            }
+            if (Settings.Shutdown_Parameters.Failed_Connections != 0)
+            {
+                if (failed_connections >= Settings.Shutdown_Parameters.Failed_Connections)
+                {
+                    break;
+                }
+            }
+            #endregion
 
-                    DateTime connecting_time = DateTime.Now;
-                    Console.WriteLine("Trying to connect to: " + SETTINGS.masters[0].ip + " @ " + connecting_time.ToString("HH:mm:ss"));
-                    Write_Log("Trying to connect to: " + SETTINGS.masters[0].ip + " @ " + connecting_time.ToString("HH:mm:ss"));
-
-                    // Connect to Master
-                    connection.Connect(remote_end_point);
-
-                    // Log the time and ip of the Master connection
-                    DateTime connection_time = DateTime.Now;
-                    Console.WriteLine("Connected to: " + connection.RemoteEndPoint.ToString() + " @ " + connection_time.ToString("HH:mm:ss"));
-                    Write_Log("Connected to: " + connection.RemoteEndPoint.ToString() + " @ " + connection_time.ToString("HH:mm:ss"));
-
-                    // Prepare request
-                    Client_Response client_response = new Client_Response();
-
-                    // Request a job
-                    client_response.message = "new";
-                    client_response.blender_version = SETTINGS.blender_version;
-                    client_response.allowed_engines = SETTINGS.allowed_engines;
-                    client_response.limit_ram_use = SETTINGS.limit_ram_use;
-                    client_response.limit_time_frame = SETTINGS.limit_ram_use;
-                    // Convert the object to string
-                    string json_send = JsonSerializer.Serialize(client_response);
-                    // Convert string to bytes
-                    byte[] bytes_send = Encoding.UTF8.GetBytes(json_send);
-                    // Send bytes to Master
-                    connection.Send(bytes_send);
-
-                    // Receive message from Master
-                    byte[] buffer = new byte[1024];
-                    int received = connection.Receive(buffer);
-                    // Convert bytes to string
-                    string json_receive = Encoding.UTF8.GetString(buffer, 0, received);
-                    // Convert string to an object
-                    Master_Response master_response = JsonSerializer.Deserialize<Master_Response>(json_receive);
-
-                    if (master_response.message == "NAN")
-                    {
-                        Console.WriteLine(connection.RemoteEndPoint.ToString() + ": no new job");
-                        Write_Log(connection.RemoteEndPoint.ToString() + ": no new job");
-                        connection.Shutdown(SocketShutdown.Both);
-                        connection.Close();
-                        Thread.Sleep(20000);
-                        continue;
-                    }
-
-                    else
-                    {
-                        log = string.Format("{0}; Project: {1}; Frame: {2} - {3}",
-                                            connection.RemoteEndPoint.ToString(),
-                                            master_response.id,
-                                            master_response.first_frame,
-                                            master_response.last_frame);
-                        Console.WriteLine(log);
-                        Write_Log(log);
-                    }
-
-                    // Prepare request
-                    client_response = new Client_Response();
-
-                    PROJECT_DIRECTORY = Path.Join(SCRIPT_DIRECTORY, master_response.id.ToString());
-                    //Console.WriteLine(PROJECT_DIRECTORY);
-
-                    // Check if the directory exsists
-                    if (!Directory.Exists(PROJECT_DIRECTORY))
-                    {
-                        // If not -> create it
-                        Directory.CreateDirectory(PROJECT_DIRECTORY);
-                    }
-
-                    // Generate .blend file name
-                    string blend_file = Path.Join(PROJECT_DIRECTORY, (master_response.id + ".blend"));
-                    // grab it's size
-                    long file_size = 0;
+            foreach (MasterConnection master in Settings.Master_Connections)
+            {
+                while (true)
+                {
                     try
                     {
-                        file_size = new FileInfo(blend_file).Length;
-                    }
-                    catch { }
+                        // Parse master ip
+                        IPAddress ip_address = IPAddress.Parse(master.IPv4);
+                        // Add master as end point using ip and port
+                        IPEndPoint remote_end_point = new IPEndPoint(ip_address, master.Port);
+                        // Socket for connection -> TCP
+                        Socket connection = new Socket(ip_address.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
 
-                    // Compare if out file is the same as the Master's
-                    if (!File.Exists(blend_file) || file_size != master_response.file_size)
-                    {
-                        // If it's not the same
-                        // Tell the Master we still need the file
-                        client_response.message = "needed";
-                        // Convert the object to string
-                        json_send = JsonSerializer.Serialize(client_response);
-                        // Convert string to bytes
-                        bytes_send = Encoding.UTF8.GetBytes(json_send);
-                        // Send bytes to Master
-                        connection.Send(bytes_send);
-
-                        // Download the file to path
-                        using (FileStream file_stream = File.Create(blend_file))
-                        {
-                            new NetworkStream(connection).CopyTo(file_stream);
-                        }
-
-                        Console.WriteLine("Downloaded " + blend_file);
-                        Write_Log("Downloaded " + blend_file);
-                    }
-
-                    else
-                    {
-                        // If it's the same just send a message to drop
-                        client_response.message = "drop";
-                        // Convert the object to string
-                        json_send = JsonSerializer.Serialize(client_response);
-                        // Convert string to bytes
-                        bytes_send = Encoding.UTF8.GetBytes(json_send);
-                        // Send bytes to Master
-                        connection.Send(bytes_send);
-
-                        Console.WriteLine(blend_file + " already exsists");
-                        Write_Log(blend_file + " already exsists");
-                    }
-
-                    // Cut the connection
-                    connection.Shutdown(SocketShutdown.Both);
-                    connection.Close();
-
-                    if (master_response.use_sid_temporal)
-                    {
-                        Render_SID_Temporal(blend_file
-                                           , master_response.first_frame
-                                           , master_response.last_frame
-                                           , master_response.render_engine);
-                    }
-                    else
-                    {
-                        Render(blend_file,
-                               master_response.first_frame,
-                               master_response.last_frame,
-                               master_response.render_engine,
-                               master_response.file_format);
-                    }
-
-                    log = string.Format("Frame {0} - {1} rendered!", master_response.first_frame, master_response.last_frame);
-                    Console.WriteLine(log);
-                    Write_Log(log);
-
-                    // Prepare new response
-                    client_response = new Client_Response();
-                    client_response.message = "output";
-                    client_response.files = new List<string>();
-                    client_response.faulty = new List<bool>();
-                    client_response.frames = new List<int>();
-
-                    // List for paths -> send files
-                    List<string> paths = new List<string>();
-
-                    string base_directory = PROJECT_DIRECTORY;
-
-                    if (master_response.use_sid_temporal)
-                    {
-                        base_directory = Path.Join(base_directory, "noisy");
-                        string[] dirs = Directory.GetDirectories(base_directory);
-
-                        int highest = 0;
-
-                        foreach (string dir in dirs)
-                        {
-                            int dir_number = int.Parse(dir.Split(Path.DirectorySeparatorChar).Last());
-
-                            if (dir_number >= highest)
-                            {
-                                highest = dir_number;
-                            }
-                        }
-
-                        base_directory = Path.Join(base_directory, highest.ToString());
-                    }
-
-                    // itterate through all rendered frames
-                    for (int frame = master_response.first_frame; frame <= master_response.last_frame; frame += master_response.frame_step)
-                    {
-                        // Add frame to list
-                        client_response.frames.Add(frame);
-
-                        string file_name = "";
-                        string path = "";
-
-                        if (master_response.use_sid_temporal)
-                        {
-                            // Generate the file name
-                            file_name = frame.ToString().PadLeft(6, '0') + ".exr";
-                            // Add file to list
-                            client_response.files.Add(file_name);
-                            // Get it's path
-                            path = Path.Join(base_directory, file_name);
-                        }
-                        else
-                        {
-                            // Generate the file name
-                            file_name = "frame_" + frame.ToString().PadLeft(6, '0') + "." + master_response.file_format;
-                            // Get it's path
-                            path = Path.Join(PROJECT_DIRECTORY, file_name);
-                            // Add file to list
-                            client_response.files.Add(file_name);
-                            // Add path to list
-                            paths.Add(path);
-                        }
-
-                        // Set faulty value based on exsistance
-                        client_response.faulty.Add(!File.Exists(path));
-                    }
-
-                    // Prepare zip file name and path
-                    string zip_name = master_response.first_frame + "_" + master_response.last_frame + ".zip";
-                    string zip_file = Path.Join(PROJECT_DIRECTORY, zip_name);
-
-                    // Add frames to ZIP
-                    using (ZipArchive archive = ZipFile.Open(zip_file, ZipArchiveMode.Create))
-                    {
-                        if (!master_response.use_sid_temporal)
-                        {
-                            foreach (string path in paths)
-                            {
-                                archive.CreateEntryFromFile(path, Path.GetFileName(path));
-                            }
-                        }
-                        else
-                        {
-                            base_directory = PROJECT_DIRECTORY;
-                            base_directory = Path.Join(base_directory, "noisy");
-                            archive.CreateEntry("noisy");
-
-                            foreach (string folder in Directory.GetDirectories(base_directory))
-                            {
-                                string only_folder = folder.Split(Path.DirectorySeparatorChar).Last();
-                                only_folder = Path.Join("noisy", only_folder);
-
-                                archive.CreateEntry(only_folder);
-
-                                foreach (string file in Directory.GetFiles(folder))
-                                {
-                                    string only_file = file.Split(Path.DirectorySeparatorChar).Last();
-                                    archive.CreateEntryFromFile(file, Path.Join(only_folder, only_file));
-                                }
-                            }
-                        }
-                    }
-
-                    if (master_response.use_ftp)
-                    {
-                        //upload to ftp server
-                    }
-
-                    log = string.Format("Frame {0} - {1} uploaded!", master_response.first_frame, master_response.last_frame);
-                    Console.WriteLine(log);
-                    Write_Log(log);
-
-                    // Make sure the Master receives them at any cost
-                    while (true)
-                    {
                         try
                         {
-                            connection = new Socket(ip_address.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
-                            // Try to connect
+                            string log = "";
+
+                            DateTime connecting_time = DateTime.Now;
+                            Logger.Log(this, $"Trying to connect to: {master.IPv4}:{master.Port}");
+
+                            // Connect to Master
                             connection.Connect(remote_end_point);
 
+                            // Log the time and ip of the Master connection
+                            DateTime connection_time = DateTime.Now;
+                            Console.WriteLine($"Connected to: {connection.RemoteEndPoint} @ {connection_time}");
+                            Logger.Log(this, $"Connected to: {connection.RemoteEndPoint}");
+
+                            // Prepare request
+                            ClientResponse client_response = new ClientResponse();
+
+                            // Request a job
+                            client_response.Message = "new";
+                            client_response.Blender_Installations = Settings.Blender_Installations;
+                            client_response.RAM_Use_Limit = Settings.RAM_Use_Limit;
+                            client_response.Render_Time_Limit = Settings.Render_Time_Limit;
                             // Convert the object to string
-                            json_send = JsonSerializer.Serialize(client_response);
+                            string json_send = JsonSerializer.Serialize(client_response);
                             // Convert string to bytes
-                            bytes_send = Encoding.UTF8.GetBytes(json_send);
-                            // Send bytes to client
+                            byte[] bytes_send = Encoding.UTF8.GetBytes(json_send);
+                            // Send bytes to Master
                             connection.Send(bytes_send);
 
-                            // If there are any good frames and in non FTP mode
-                            if (client_response.faulty.Contains(false) && !master_response.use_ftp)
-                            {
-                                // Synchronize with Master
-                                buffer = new byte[1024];
-                                connection.Receive(buffer);
+                            // Receive message from Master
+                            byte[] buffer = new byte[1024];
+                            int received = connection.Receive(buffer);
+                            // Convert bytes to string
+                            string json_receive = Encoding.UTF8.GetString(buffer, 0, received);
+                            // Convert string to an object
+                            MasterResponse master_response = JsonSerializer.Deserialize<MasterResponse>(json_receive);
 
-                                // Send the ZIP file
-                                connection.SendFile(zip_file);
-                                break;
+                            if (master_response.Message == "NAN")
+                            {
+                                Console.WriteLine($"{connection.RemoteEndPoint}: no new job");
+                                Logger.Log(this, $"{connection.RemoteEndPoint}: no new job");
+                                connection.Shutdown(SocketShutdown.Both);
+                                connection.Close();
+                                Thread.Sleep(20000);
+                                continue;
+                            }
+                            else
+                            {
+                                Console.WriteLine($"{connection.RemoteEndPoint}; Project: {master_response.ID}; Frame {master_response.Frames.First().Id} - {master_response.Frames.Last().Id}");
+                                Logger.Log(this, $"{connection.RemoteEndPoint}; Project: {master_response.ID}; Frame {master_response.Frames.First().Id} - {master_response.Frames.Last().Id}");
                             }
 
-                            break;
-                        }
-                        catch (Exception e)
-                        {
-                            // Log errors
-                            Write_Log(e.ToString());
-                        }
-                        
-                    }
+                            Project_Directory = Path.Join(Bin_Directory, master_response.ID.ToString());
 
-                    // Cut the connection
-                    connection.Shutdown(SocketShutdown.Both);
-                    connection.Close();
-                }
-                catch (Exception e)
-                {
-                    if (e is SocketException)
-                    {
-                        Console.WriteLine("Can't connect to Master");
+                            // Check if the directory exsists
+                            if (!Directory.Exists(Project_Directory))
+                            {
+                                // If not -> create it
+                                Directory.CreateDirectory(Project_Directory);
+                            }
+
+                            // Generate .blend file name
+                            string blend_file = Path.Join(Project_Directory, (master_response.ID + ".blend"));
+                            // grab it's size
+                            long file_size = 0;
+                            try
+                            {
+                                file_size = new FileInfo(blend_file).Length;
+                            }
+                            catch { }
+
+                            // Compare if out file is the same as the Master's
+                            if (!File.Exists(blend_file) || file_size != master_response.File_Size)
+                            {
+                                if (master_response.File_transfer_Mode == FileTransferMode.TCP)
+                                {
+                                    // Prepare request
+                                    client_response = new ClientResponse();
+
+                                    // If it's not the same
+                                    // Tell the Master we still need the file
+                                    client_response.Message = "needed";
+                                    // Convert the object to string
+                                    json_send = JsonSerializer.Serialize(client_response);
+                                    // Convert string to bytes
+                                    bytes_send = Encoding.UTF8.GetBytes(json_send);
+                                    // Send bytes to Master
+                                    connection.Send(bytes_send);
+
+                                    // Download the file to path
+                                    using (FileStream file_stream = File.Create(blend_file))
+                                    {
+                                        new NetworkStream(connection).CopyTo(file_stream);
+                                    }
+
+                                    Logger.Log(this, $"Downloaded {blend_file}");
+                                }
+                                
+                                else if (master_response.File_transfer_Mode == FileTransferMode.SMB)
+                                {
+                                    File.Copy(Path.Join(master_response.Connection_String, (master_response.ID + ".blend")), blend_file);
+
+                                    Logger.Log(this, $"Downloaded {blend_file}");
+                                }
+
+                                else if (master_response.File_transfer_Mode == FileTransferMode.FTP)
+                                {
+                                    Web_Client = new WebClient();
+                                    //Web_Client.Credentials = new NetworkCredential(Settings.FTP_Connection.User, Settings.FTP_Connection.Password);
+                                    Web_Client.DownloadFile(Path.Join(master_response.Connection_String, (master_response.ID + ".blend")), blend_file);
+
+                                    Logger.Log(this, $"Downloaded {blend_file}");
+                                }
+                            }
+
+                            else
+                            {
+                                if (master_response.File_transfer_Mode == FileTransferMode.TCP)
+                                {
+                                    // If it's the same just send a message to drop
+                                    client_response.Message = "drop";
+                                    // Convert the object to string
+                                    json_send = JsonSerializer.Serialize(client_response);
+                                    // Convert string to bytes
+                                    bytes_send = Encoding.UTF8.GetBytes(json_send);
+                                    // Send bytes to Master
+                                    connection.Send(bytes_send);
+
+                                    Console.WriteLine($"{blend_file} already exists");
+                                    Logger.Log(this, $"{blend_file} already exists");
+                                }
+                            }
+
+                            // Cut the connection
+                            connection.Shutdown(SocketShutdown.Both);
+                            connection.Close();
+
+                            if (master_response.Use_SID_Temporal)
+                            {
+                                Render_SID_Temporal(blend_file,
+                                                   master_response.Frames.First().Id,
+                                                   master_response.Frames.Last().Id,
+                                                   master_response.Render_Engine);
+                            }
+                            else
+                            {
+                                Render(blend_file,
+                                       master_response.Frames.First().Id,
+                                       master_response.Frames.Last().Id,
+                                       master_response.Render_Engine,
+                                       master_response.File_Format);
+                            }
+
+                            Console.WriteLine($"Frame {master_response.Frames.First().Id} - {master_response.Frames.Last().Id} rendered!");
+                            Logger.Log(this, $"Frame {master_response.Frames.First().Id} - {master_response.Frames.Last().Id} rendered!");
+
+                            // Prepare new response
+                            client_response = new ClientResponse();
+                            client_response.Message = "output";
+                            client_response.Frames = new List<Frame>();
+
+                            // List for paths -> send files
+                            List<string> paths = new List<string>();
+
+                            string base_directory = Project_Directory;
+
+                            if (master_response.Use_SID_Temporal)
+                            {
+                                if (Directory.Exists(Path.Join(Project_Directory, "noisy")))
+                                {
+                                    base_directory = Path.Join(Project_Directory, "noisy");
+                                }
+                                else if (Directory.Exists(Path.Join(Project_Directory, "processing")))
+                                {
+                                    base_directory = Path.Join(Project_Directory, "processing");
+                                }
+
+                                string[] dirs = Directory.GetDirectories(base_directory);
+
+                                int highest = 0;
+
+                                foreach (string dir in dirs)
+                                {
+                                    int dir_number = int.Parse(dir.Split(Path.DirectorySeparatorChar).Last());
+
+                                    if (dir_number >= highest)
+                                    {
+                                        highest = dir_number;
+                                    }
+                                }
+
+                                base_directory = Path.Join(base_directory, highest.ToString());
+                            }
+
+                            // itterate through all rendered frames
+                            for (int frame_id = master_response.Frames.First().Id; frame_id <= master_response.Frames.Last().Id; frame_id += master_response.Frame_Step)
+                            {
+                                Frame frame = new Frame();
+
+                                string file_name = "";
+                                string path = "";
+
+                                if (master_response.Use_SID_Temporal)
+                                {
+                                    // Generate the file name
+                                    file_name = frame_id.ToString().PadLeft(6, '0') + ".exr";
+                                    // Add file to list
+                                    frame.File_Name = file_name;
+                                    // Get it's path
+                                    path = Path.Join(base_directory, file_name);
+                                }
+                                else
+                                {
+                                    // Generate the file name
+                                    file_name = "frame_" + frame_id.ToString().PadLeft(6, '0') + "." + master_response.File_Format;
+                                    // Get it's path
+                                    path = Path.Join(Project_Directory, file_name);
+                                    // Add file to list
+                                    frame.File_Name = file_name;
+                                    // Add path to list
+                                    paths.Add(path);
+                                }
+
+                                // Set faulty value based on exsistance
+                                frame.Quality = File.Exists(path);
+
+                                frame.Id = frame_id;
+
+                                // Add frame to list
+                                client_response.Frames.Add(frame);
+                            }
+
+                            // Prepare zip file name and path
+                            string zip_name = master_response.Frames.First().Id + "_" + master_response.Frames.Last().Id + ".zip";
+                            string zip_file = Path.Join(Project_Directory, zip_name);
+
+                            // Add frames to ZIP
+                            using (ZipArchive archive = ZipFile.Open(zip_file, ZipArchiveMode.Create))
+                            {
+                                if (!master_response.Use_SID_Temporal)
+                                {
+                                    foreach (string path in paths)
+                                    {
+                                        archive.CreateEntryFromFile(path, Path.GetFileName(path));
+                                    }
+                                }
+                                else
+                                {
+                                    base_directory = Project_Directory;
+                                    base_directory = Path.Join(base_directory, "noisy");
+                                    archive.CreateEntry("noisy");
+
+                                    foreach (string folder in Directory.GetDirectories(base_directory))
+                                    {
+                                        string only_folder = folder.Split(Path.DirectorySeparatorChar).Last();
+                                        only_folder = Path.Join("noisy", only_folder);
+
+                                        archive.CreateEntry(only_folder);
+
+                                        foreach (string file in Directory.GetFiles(folder))
+                                        {
+                                            string only_file = file.Split(Path.DirectorySeparatorChar).Last();
+                                            archive.CreateEntryFromFile(file, Path.Join(only_folder, only_file));
+                                        }
+                                    }
+                                }
+                            }
+
+                            try
+                            {
+                                connection = new Socket(ip_address.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+                                // Try to connect
+                                connection.Connect(remote_end_point);
+
+                                // Convert the object to string
+                                json_send = JsonSerializer.Serialize(client_response);
+                                // Convert string to bytes
+                                bytes_send = Encoding.UTF8.GetBytes(json_send);
+                                // Send bytes to client
+                                connection.Send(bytes_send);
+
+                                // If there are any good frames and in non FTP mode
+                                if (client_response.Frames.Where(frame => frame.Quality == true).ToList().Count > 0)
+                                {
+                                    if (master_response.File_transfer_Mode == FileTransferMode.TCP)
+                                    {
+                                        // Synchronize with Master
+                                        buffer = new byte[1024];
+                                        connection.Receive(buffer);
+
+                                        // Send the ZIP file
+                                        connection.SendFile(zip_file);
+                                    }
+                                    else if (master_response.File_transfer_Mode == FileTransferMode.SMB)
+                                    {
+                                        File.Copy(zip_file, Path.Join(master_response.Connection_String, zip_name));
+                                    }
+                                    else if (master_response.File_transfer_Mode == FileTransferMode.FTP)
+                                    {
+                                        Web_Client.UploadFile(Path.Join(master_response.Connection_String, zip_name), zip_file);
+                                    }
+
+                                    log = string.Format("Frame {0} - {1} uploaded!", master_response.Frames.First().Id, master_response.Frames.Last().Id);
+                                    Console.WriteLine(log);
+                                    Logger.Log(this, log);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                // Log errors
+                                Logger.Log(this, ex.ToString());
+                            }
+
+                            // Cut the connection
+                            connection.Shutdown(SocketShutdown.Both);
+                            connection.Close();
+                        }
+                        catch (SocketException ex)
+                        {
+                            Console.WriteLine("Can't connect to Master.");
+                            Logger.Log(this, ex.ToString(), silenced:true);
+
+                            Thread.Sleep(10000);
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Log(this, ex.ToString());
+
+                            Thread.Sleep(10000);
+                        }
                     }
-                    else
+                    catch (Exception ex)
                     {
                         // Log errors
-                        Console.WriteLine("Unexpected exception : {0}", e.ToString());
+                        Logger.Log(this, ex.ToString());
+                        // Wait for 30 seconds
+                        Thread.Sleep(30000);
                     }
-
-                    Write_Log(e.ToString());
-
-                    Thread.Sleep(10000);
                 }
             }
-            catch (Exception e)
-            {
-                // Log errors
-                Console.WriteLine(e.ToString());
-                Write_Log(e.ToString());
-                // Wait for 30 seconds
-                Thread.Sleep(30000);
-            }
         }
-        
     }
 
-    public static void Render_SID_Temporal(string blend_file, int first_frame, int last_frame, string render_engine)
+    public void Render_SID_Temporal(string blend_file, int first_frame, int last_frame, string render_engine)
     {
         // Prepare Blender arguments
-        string args = string.Format("-b \"{0}\" -t {1} -P SID_Temporal_Bridge.py -- {2} {3}",
-                                    blend_file,
-                                    SETTINGS.limit_cpu_threads,
-                                    first_frame,
-                                    last_frame);
+        string args = $"-b \"{blend_file}\" -t {Settings.Blender_Installations[0].CPU_Thread_Limit} -P SID_Temporal_Bridge.py -- {first_frame} {last_frame}";
         // Add render device for Cycles
         if (render_engine == "CYCLES")
         {
             args += " --cycles-device ";
-            args += SETTINGS.render_device;
+            args += Settings.Blender_Installations[0].Render_Device;
         }
 
         // Use Blender to render project
         Process process = new Process();
         // Set Blender as executable
-        process.StartInfo.FileName = SETTINGS.blender_executable;
+        process.StartInfo.FileName = Settings.Blender_Installations[0].Executable;
         // Use the command string as args
         process.StartInfo.Arguments = args;
         process.StartInfo.CreateNoWindow = true;
@@ -488,30 +541,24 @@ class Client
         // Log the output
         process.WaitForExit();
         string cmd_output = process.StandardOutput.ReadToEnd();
-        Write_Log(cmd_output);
+        Logger.Log(this, cmd_output);
     }
 
-    public static void Render(string blend_file, int first_frame, int last_frame, string render_engine, string file_format)
+    public void Render(string blend_file, int first_frame, int last_frame, string render_engine, string file_format)
     {
         // Prepare Blender arguments
-        string args = string.Format("-b \"{0}\" -o {1} -F {2} -s {3} -e {4} -t {5} -a",
-                                    blend_file,
-                                    Path.Join(PROJECT_DIRECTORY, "frame_######"),
-                                    file_format,
-                                    first_frame,
-                                    last_frame,
-                                    SETTINGS.limit_cpu_threads);
+        string args = $"-b \"{blend_file}\" -o {Path.Join(Project_Directory, "frame_######")} -F {file_format} -s {first_frame} -e {last_frame} -t {Settings.Blender_Installations[0].CPU_Thread_Limit} -a";
         // Add render device for Cycles
         if (render_engine == "CYCLES")
         {
             args += " --cycles-device ";
-            args += SETTINGS.render_device;
+            args += Settings.Blender_Installations[0].Render_Device;
         }
 
         // Use Blender to render project
         Process process = new Process();
         // Set Blender as executable
-        process.StartInfo.FileName = SETTINGS.blender_executable;
+        process.StartInfo.FileName = Settings.Blender_Installations[0].Executable;
         // Use the command string as args
         process.StartInfo.Arguments = args;
         process.StartInfo.CreateNoWindow = true;
@@ -527,270 +574,181 @@ class Client
         //Write_Log(cmd_output);
     }
 
-    #region Menu_Display
-    // Open a semi-graphical menu allowing easy user input
-    public static string Menu(List<string> options, List<string> headlines)
-    {
-        // Hide cursor
-        int selected = 0;
-        Console.CursorVisible = false;
-
-        // Create and fill list with given options
-        List<Menu_Item> items = new List<Menu_Item>();
-        foreach (string option in options)
-        {
-            items.Add(new Menu_Item(option));
-        }// Create empty settings object
-        Settings new_settings = new Settings();
-        // Make the 1st option the default
-        items[0].selected = true;
-
-        // Infinite loop
-        while (true)
-        {
-            // Clear everything and show the top bar
-            Console.Clear();
-            Show_Top_Bar();
-
-            // Show an additional promt if given
-            if (headlines.Count != 0)
-            {
-                // Print every line
-                foreach (string headline in headlines)
-                {
-                    Console.WriteLine(headline);
-                }
-                //Console.WriteLine("#--------------------------------------------------------------#");
-                //Console.WriteLine("");
-            }
-
-            // GO through all items and color them depending on the selection
-            foreach (Menu_Item item in items)
-            {
-                if (item.selected)
-                {
-                    Console.ForegroundColor = ConsoleColor.Black;
-                    Console.BackgroundColor = ConsoleColor.White;
-                }
-
-                Console.WriteLine(item.text);
-
-                Console.ForegroundColor = ConsoleColor.White;
-                Console.BackgroundColor = ConsoleColor.Black;
-            }
-
-            // Wait for user input
-            ConsoleKeyInfo keyInfo = Console.ReadKey();
-            ConsoleKey key = keyInfo.Key;
-
-            // If possible go up in list
-            if (key == ConsoleKey.UpArrow && selected != 0)
-            {
-                items[selected].selected = false;
-
-                selected--;
-
-                items[selected].selected = true;
-            }
-
-            // If possible go down in list
-            else if (key == ConsoleKey.DownArrow && selected != (items.Count() - 1))
-            {
-                items[selected].selected = false;
-
-                selected++;
-
-                items[selected].selected = true;
-            }
-
-            // Return the current selection and break out of the loop
-            // Show the cursor
-            else if (key == ConsoleKey.Enter)
-            {
-                Console.Clear();
-                Console.CursorVisible = true;
-                return items[selected].text;
-            }
-        }
-    }
-
-    // Print the top bar
-    public static void Show_Top_Bar(List<string> addition = null)
-    {
-        Console.WriteLine("Pidgeon Render Farm - Client");
-        Console.WriteLine("Join the Discord server for support - https://discord.gg/cnFdGQP");
-        Console.WriteLine("");
-
-        if (addition != null)
-        {
-            foreach (string line in addition)
-            {
-                Console.WriteLine(line);
-            }
-
-            Console.WriteLine("");
-        }
-
-        Console.WriteLine("#--------------------------------------------------------------#");
-        Console.WriteLine("");
-    }
-    #endregion
-
     #region Setup
     public static void First_Time_Setup()
     {
         // Create empty settings object
-        Settings new_settings = new Settings();
+        Settings = new ClientSettings();
         // Removes the need to type "new List<string> { "Yes", "No" }" every time
-        List<string> basic_bool = new List<string> { "Yes", "No" };
+        List<string> basic_bool = new List<string> { "No", "Yes" };
         // user_input string
         string user_input;
 
-        // Write version - for updating in the future
-        new_settings.version = VERSION;
+        Settings.Database_Connection = new DBConnection(DBMode.SQLite, Database_Directory);
+        Settings.Shutdown_Parameters = new AutoShutdown();
 
         // Enable logging
         // Use Menu() to grab user input
-        new_settings.enable_logging = Parse_Bool(Menu(basic_bool, new List<string> { "Enable logging? (It is recommended to turn this on. To see whats included please refer to the documentation!)" }));
+        Menu menu = new Menu
+        (
+            basic_bool,
+            "Client",
+            new List<string> { "Enable logging? (It is recommended to turn this on. To see whats included please refer to the documentation!)" }
+        );
+        Settings.Enable_Logging = Helpers.Parse_Bool(menu.Show());
+
+        menu = new Menu
+        (
+            basic_bool,
+            "Client",
+            new List<string> { "Keep the files reiceved by the Master?",
+                               "If this is disabled, the Client will redownload the project every time" }
+        );
+        Settings.Keep_Input = Helpers.Parse_Bool(menu.Show());
+
+        menu = new Menu
+        (
+            basic_bool,
+            "Client",
+            new List<string> { "Keep the rendered files?",
+                               "If this is disabled, the Client will delete all rendered files after sending them to the master" }
+        );
+        Settings.Keep_Output = Helpers.Parse_Bool(menu.Show());
+
+        menu = new Menu
+        (
+            basic_bool,
+            "Client",
+            new List<string> { "Keep the ZIP files?",
+                               "If this is disabled, the Client will delete all ZIP files after sending them to the master" }
+        );
+        Settings.Keep_ZIP = Helpers.Parse_Bool(menu.Show());
 
         // Add Master
         // Let the user input a valid IP adress with Port
         // E.g. "127.0.0.1:8080", "127.0.0.1:8081"
-        Show_Top_Bar();
-        Console.WriteLine("If you want to add a Master write it like this 'IPv4:Port', e.g. '127.0.0.1:19186'");
+        Settings.Master_Connections = new List<MasterConnection>();
+        Display.Show_Top_Bar("Client");
+        Console.WriteLine("You now have the option to add multiple Master connections.");
+        Console.WriteLine("You need to add at least one connection.");
         while (true)
         {
-            Console.WriteLine("Would you like to add another Master? (leave empty for no)");
+            Console.WriteLine("If you want to add a Master write it like this 'IPv4:Port', e.g. '127.0.0.1:19186'");
+
             user_input = Console.ReadLine();
 
-            if (user_input == "" && new_settings.masters.Count > 0)
+            if (string.IsNullOrWhiteSpace(user_input) && Settings.Master_Connections.Count > 0)
             {
                 break;
             }
 
-            else if (!Check_Split_IP_Port(user_input))
+            else if (!Helpers.Check_Split_IP_Port(user_input))
             {
                 Console.WriteLine("Please input a valid combination of a IPv4 and a port");
                 Console.WriteLine("If you are having trouble you can contact us on Discord at any time!");
             }
 
-            else if (Check_Split_IP_Port(user_input))
+            else if (Helpers.Check_Split_IP_Port(user_input))
             {
                 string[] split = user_input.Split(':');
-                new_settings.masters.Add(new Master(split[0], int.Parse(split[1])));
+                Settings.Master_Connections.Add(new MasterConnection(split[0], int.Parse(split[1])));
+
+                Console.WriteLine("Would you like to add another Master? (leave empty for no; paste the connection string for yes)");
             }
         }
         Console.Clear();
 
         // Blender Executable
         // Check if the file exsists
-        Show_Top_Bar();
-        Console.WriteLine("Where is your blender executable stored? (It's recommended not to use blender-launcher)");
-        user_input = Console.ReadLine().Replace("\"", "");
-        while (!File.Exists(user_input))
+        Settings.Blender_Installations = new List<Blender>();
+        Display.Show_Top_Bar("Client");
+        Console.WriteLine("You now have the option to add multiple Blender installations.");
+        Console.WriteLine("You need to add at least one installation.");
+        Console.WriteLine("");
+        while (true)
         {
+            Console.WriteLine("Where is your blender executable stored? (It's recommended NOT to use blender-launcher)");
             Console.WriteLine("Please input the path to your blender executable");
-            user_input = Console.ReadLine().Replace("\"", "");
-            user_input = user_input.Replace("'", "");
-        }
-        new_settings.blender_executable = user_input;
+            user_input = Console.ReadLine().Replace("\"", "").Replace("'", "");
 
-        // Keep output
-        // Use Menu() to grab user input
-        new_settings.render_device = Menu(new List<string> { "CPU", "CUDA", "OPTIX", "HIP", "ONEAPI", "METAL", "OPENCL" },
-                                          new List<string> { "What device/API to use for rendering? (Be sure your device and Blender version supports your selection!)" });
-
-        // Add CPU
-        if (new_settings.render_device != "CPU")
-        {
-            // Use Menu() to grab user input
-            if (Parse_Bool(Menu(basic_bool, new List<string> { "Enable Hybrid Cycles-rendering? (For some it cuts the render time, for some it increases it)" })))
+            if (string.IsNullOrWhiteSpace(user_input) && Settings.Blender_Installations.Count > 0)
             {
-                new_settings.render_device = new_settings.render_device + "+CPU";
+                break;
+            }
+
+            else if (File.Exists(user_input))
+            {
+                Settings.Blender_Installations.Add(new Blender
+                {
+                    Executable = user_input,
+                });
+
+                menu = new Menu
+                (
+                    new List<string> { "CPU", "CUDA", "OPTIX", "HIP", "ONEAPI", "METAL", "OPENCL" },
+                    "Client",
+                    new List<string> { "What device/API to use for rendering? (Be sure your device supports your selection!)" }
+                );
+                Settings.Blender_Installations.Last().Render_Device = menu.Show();
+
+                // Add CPU
+                if (Settings.Blender_Installations.Last().Render_Device != "CPU")
+                {
+                    menu = new Menu
+                    (
+                        basic_bool,
+                        "Client",
+                        new List<string> { "Enable Hybrid Cycles-rendering? (For some system configurations it cuts the render time, for some it increases it)" }
+                    );
+
+                    if (Helpers.Parse_Bool(menu.Show()))
+                    {
+                        Settings.Blender_Installations.Last().Render_Device += "+CPU";
+                    }
+                    else
+                    {
+                        Settings.Blender_Installations.Last().CPU_Thread_Limit = 2;
+                    }
+                }
+                else
+                {
+                    Settings.Blender_Installations.Last().CPU_Thread_Limit = Environment.ProcessorCount;
+                }
+
+                // Select allowed render engines
+                (Settings.Blender_Installations.Last().Allowed_Render_Engines, Settings.Blender_Installations.Last().Version) = Pick_Render_Engines(user_input, Settings.Enable_Logging);
+
+                Display.Show_Top_Bar("Client");
+                Console.WriteLine("Would you like to add another installation? (leave empty for no; paste the path for yes)");
             }
         }
-        else
-        {
-            new_settings.limit_cpu_threads = Environment.ProcessorCount + 1;
-        }
-
-        // Select allowed render engines
-        (new_settings.allowed_engines, new_settings.blender_version) = Pick_Render_Engines(new_settings.blender_executable, new_settings.enable_logging);
-
-        // Keep input
-        // Use Menu() to grab user input
-        //new_settings.keep_input = Parse_Bool(Menu(basic_bool, new List<string> { "Keep the files received from the Master?" }));
-
-        // Keep output
-        // Use Menu() to grab user input
-        //new_settings.keep_output = Parse_Bool(Menu(basic_bool, new List<string> { "Keep the files rendered on this device?" }));
+        Console.Clear();
 
         // Data collection
         // Use Menu() to grab user input
-        new_settings.collect_data = Parse_Bool(Menu(basic_bool, new List<string> { "Allow us to collect data? (it is only stored locally for debugging purposes)" }));
-
-        bool advances_settings = Parse_Bool(Menu(basic_bool, new List<string> { "Would you like to edit the advanced settings?" }));
-
-        if (advances_settings)
-        {
-            // CPU Thread limit
-            // Use Menu() to grab user input
-            List<string> tmp = new List<string>();
-            for (int thread = 0; thread < Environment.ProcessorCount; thread++)
-            {
-                tmp.Add((thread + 1).ToString());
-            }
-            tmp.Reverse();
-            new_settings.limit_cpu_threads = int.Parse(Menu(tmp, new List<string> { "How many CPU threads to use? (used for compositing and rendering, if enabled; if you can't see all of your aviable threads, please contact us on Discord)" }));
-
-            // RAM usage limit
-            // Let the user input a valid number
-            // If emtpy, then use use no limit
-            /*Show_Top_Bar();
-            Console.WriteLine("If you would like to limit the amount of RAM used for projects type a number here (in GigaByte/GB; type 0/leave empty for no limit):");
-            user_input = Console.ReadLine();
-            while (!int.TryParse(user_input, out _))
-            {
-                if (user_input == "")
-                {
-                    user_input = "0";
-                    break;
-                }
-
-                Console.WriteLine("Please input a whole number");
-                user_input = Console.ReadLine();
-            }
-            new_settings.limit_ram_use = Math.Abs(int.Parse(user_input));
-            Console.Clear();*/
-
-            // Time limit per frame
-            // Let the user input a valid number
-            // If emtpy, then use use no limit
-            Show_Top_Bar();
-            Console.WriteLine("If you would like to limit the amount of time consumed per frame type a number here (in seconds; type 0.0/leave empty for no limit):");
-            user_input = Console.ReadLine();
-            while (!float.TryParse(user_input, out _))
-            {
-                if (user_input == "")
-                {
-                    user_input = "0.0";
-                    break;
-                }
-
-                Console.WriteLine("Please input a decimal number");
-                user_input = Console.ReadLine();
-            }
-            new_settings.limit_time_frame = MathF.Abs(float.Parse(user_input));
-            Console.Clear();
-        }
+        menu = new Menu
+        (
+            basic_bool,
+            "Client",
+            new List<string> { "Save debug data? (it is only stored locally)",
+                               "You can find a list of all the data stored in the documentation" }
+        );
+        Settings.Allow_Data_Collection = Helpers.Parse_Bool(menu.Show());
 
         // Save the settings
-        Save_Settings(new_settings);
+        Settings_File_Handler.Save_Settings(Settings);
+
+        Display.Show_Top_Bar("Client");
+        Console.WriteLine("Setup complete!");
+        Console.WriteLine("You can find more and experimental settings in the file 'client_settings.json'");
+        Console.WriteLine("Press any key to continue.");
+
+        Console.ReadKey();
     }
-    public static (List<string>,string) Pick_Render_Engines(string blender_executable, bool enable_logging)
+    public static (List<string>, string) Pick_Render_Engines(string blender_executable, bool enable_logging)
     {
         // Tell the user why it is taking so long
-        Show_Top_Bar();
+        Display.Show_Top_Bar("Client");
         Console.WriteLine("Please wait while importing installed render engines from Blender...");
 
         // Prepare Blender arguments
@@ -813,9 +771,12 @@ class Client
 
         // Split the content of the file into a List
         List<string> engines = new List<string>();
-        List<string> lines = File.ReadLines(Path.Join(SCRIPT_DIRECTORY, "engines.json")).ToList();
-        string version = lines[0];
-        lines.Remove(version);
+        List<string> lines = File.ReadLines(Path.Join(Bin_Directory, "engines.txt")).ToList();
+        string version_string = lines[0];
+        //string[] version_list = version_string.Split('.');
+        //(int, int, int) version = (int.Parse(version_list[0]), int.Parse(version_list[1]), int.Parse(version_list[2]));
+        string version = version_string;
+        lines.Remove(version_string);
         foreach (string line in lines)
         {
             engines.Add(line);
@@ -829,7 +790,13 @@ class Client
             "Select allowed from installed engines"
         };
         // Show the Menu and grab the selection
-        string selection = Menu(items, new List<string> { "" });
+        Menu menu = new Menu
+        (
+            items,
+            "Client",
+            new List<string> { "" }
+        );
+        string selection = menu.Show();
         // Compare selection with options and execute function
         if (selection == items[0])
         {
@@ -853,7 +820,13 @@ class Client
             while (engines.Count > 1)
             {
                 // Give him a selection of engines
-                selection = Menu(engines, new List<string> { "Choose one by one which render engines to allow." });
+                menu = new Menu
+                (
+                    engines,
+                    "Client",
+                    new List<string> { "Choose one by one which render engines to allow." }
+                );
+                selection = menu.Show();
 
                 // If he isn't done remove from engines remaining and add to picked
                 if (selection != "That is it, I don't want to allow more engines")
@@ -875,347 +848,5 @@ class Client
         // Return null and Blender version
         return (null, version);
     }
-
-    // Save settings based on a new set
-    public static void Save_Settings(Settings new_settings)
-    {
-        // Update global settings object
-        SETTINGS = new_settings;
-
-        // Convert object to json
-        var options = new JsonSerializerOptions { WriteIndented = true };
-        string jsonString = JsonSerializer.Serialize(SETTINGS, options);
-
-        // Write to file
-        File.WriteAllText(SETTINGS_FILE, jsonString);
-    }
-
-    // Load the settings
-    public static void Load_Settings(string custom_file = "")
-    {
-        // If empty file -> use global file
-        if (custom_file == "")
-        {
-            custom_file = SETTINGS_FILE;
-        }
-
-        // Check if settings exsist, else run setup
-        if (!File.Exists(custom_file))
-        {
-            First_Time_Setup();
-            return;
-        }
-
-        // Load string from file and convert it to object
-        // Update global settings object
-        string json_string = File.ReadAllText(custom_file);
-        SETTINGS = JsonSerializer.Deserialize<Settings>(json_string);
-    }
-    #endregion
-
-    #region Data Handeling
-    // Write text to log file
-    public static void Write_Log(string content)
-    {
-        // Only log stuff if the users allows it
-        if (SETTINGS.enable_logging)
-        {
-            // Make sure file exsists
-            if (!File.Exists(LOGS_FILE))
-            {
-                File.Create(LOGS_FILE).Close();
-            }
-
-            // Append line break
-            content += Environment.NewLine;
-
-            // Append new line to file
-            File.AppendAllText(LOGS_FILE, content);
-        }
-    }
-
-    // Write text to log file with logging overwrite
-    public static void Write_Log(string content, bool overwrite)
-    {
-        if (overwrite)
-        {
-            // Make sure file exsists
-            if (!File.Exists(LOGS_FILE))
-            {
-                File.Create(LOGS_FILE).Close();
-            }
-
-            // Append line break
-            content += Environment.NewLine;
-
-            // Append new line to file
-            File.AppendAllText(LOGS_FILE, content);
-        }
-    }
-
-    // Collect system data
-    public static void Collect_Data()
-    {
-        // Create empty PRF_Data object
-        PRF_Data new_data = new PRF_Data();
-
-        // ONLY proceed if the user agrees
-        if (SETTINGS.collect_data)
-        {
-            // Gather informations and add to data object
-            new_data.os = System.Runtime.InteropServices.RuntimeInformation.OSDescription;
-        }
-
-        // Save the obtained data
-        Save_Data(new_data);
-    }
-
-    // Save data object
-    public static void Save_Data(PRF_Data new_data)
-    {
-        // Update global PRF_DATA object
-        PRF_DATA = new_data;
-
-        // Convert object to json
-        var options = new JsonSerializerOptions { WriteIndented = true };
-        string json_string = JsonSerializer.Serialize(PRF_DATA, options);
-
-        // Write json to file
-        File.WriteAllText(DATA_FILE, json_string);
-    }
-
-    // Load PRF_DATA
-    public static void Load_Data(PRF_Data new_data)
-    {
-        // Prevent read errors
-        if (!File.Exists(DATA_FILE))
-        {
-            Collect_Data();
-            return;
-        }
-
-        // Read json from file
-        // Convert json to object
-        // Update global PRF_DATA object
-        string json_string = File.ReadAllText(DATA_FILE);
-        PRF_DATA = JsonSerializer.Deserialize<PRF_Data>(json_string);
-    }
-    #endregion
-
-    #region Helpers
-    // Check if string is a valid port
-    public static bool Is_Port(string port)
-    {
-        // Check if string is number
-        if (!int.TryParse(port, out _))
-        {
-            return false;
-        }
-
-        // Check if number is between 1 and 65535
-        return (Math.Abs(int.Parse(port)) >= 1 && Math.Abs(int.Parse(port)) <= 65535);
-    }
-
-    // Convert string to bool, accepts default
-    public static dynamic Parse_Bool(string value, bool def = true)
-    {
-        // If human is not sure, return default value/let developer decide
-        if (value == "")
-        {
-            return def;
-        }
-
-        // If it is a human yes, return computer true
-        else if (new List<string>() { "true", "yes", "y", "1" }.Any(s => s.Contains(value.ToLower())))
-        {
-            return true;
-        }
-
-        // If it is a human no, return computer false
-        else if (new List<string>() { "false", "no", "n", "0" }.Any(s => s.Contains(value.ToLower())))
-        {
-            return false;
-        }
-
-        // if none applies, return error
-        return null;
-    }
-
-    // Convert string to List of strings, requires default
-    public static List<string> Parse_List(string value, List<string> def)
-    {
-        // If human is not sure, return default value/let developer decide
-        if (value == "")
-        {
-            return def;
-        }
-
-        // If human used "," to seperate
-        else if (value.Split(",").Length > 0)
-        {
-            return value.Split(",").ToList();
-        }
-
-        // If human used ", " to seperate
-        else if (value.Split(", ").Length > 0)
-        {
-            return value.Split(", ").ToList();
-        }
-
-        // if none applies, return error
-        return null;
-    }
-
-    // Check if string is a IPv4
-    // Return bool
-    // Credit: https://stackoverflow.com/users/961113/habib
-    public static bool Validate_IPv4(string ipString)
-    {
-        if (String.IsNullOrWhiteSpace(ipString))
-        {
-            return false;
-        }
-
-        string[] splitValues = ipString.Split('.');
-        if (splitValues.Length != 4)
-        {
-            return false;
-        }
-
-        byte tempForParsing;
-
-        return splitValues.All(r => byte.TryParse(r, out tempForParsing));
-    }
-
-    // Check if a given ip with port is valid
-    public static bool Check_Split_IP_Port(string value)
-    {
-        // If split is not 2 parts -> invalid
-        if (value.Split(':').Length != 2)
-        {
-            return false;
-        }
-
-        // If ip part is not IPv4 -> invalid
-        if (!Validate_IPv4(value.Split(":")[0]))
-        {
-            return false;
-        }
-
-        // If port part is not port -> invalid
-        if (!Is_Port(value.Split(":")[1]))
-        {
-            return false;
-        }
-
-        // If checks passed it is valid
-        return true;
-    }
-
-    public static IPAddress Get_IPv4()
-    {
-        // Obtain the ip adresses of the current machine
-        IPHostEntry host = Dns.GetHostEntry(Dns.GetHostName());
-
-        // Check each adress -> find out if it's local IPv4
-        foreach (IPAddress ip in host.AddressList)
-        {
-            if (ip.AddressFamily == AddressFamily.InterNetwork)
-            {
-                return ip;
-            }
-        }
-
-        // If not connected only use local IP
-        return IPAddress.Parse("127.0.0.1");
-    }
     #endregion
 }
-
-#region Objects
-// Settings object class
-public class Settings
-{
-    public string version { get; set; } = "0.0.0";
-    public List<Master> masters { get; set; } = new List<Master>();
-    public string blender_executable { get; set; }
-    public string blender_version { get; set; }
-    public string render_device { get; set; }
-    public int limit_cpu_threads { get; set; } = 2;
-    public int limit_ram_use { get; set; } = 0;
-    public float limit_time_frame { get; set; } = 0;
-    public List<string> allowed_engines { get; set; }
-    public bool keep_input { get; set; }
-    public bool keep_output { get; set; }
-    public bool collect_data { get; set; }
-    public bool enable_logging { get; set; }
-}
-
-// Master class -> saved connection
-public class Master
-{
-    public string ip { get; set; } = "127.0.0.1";
-    public int port { get; set; } = 8080;
-
-    public Master(string new_ip, int new_port)
-    {
-        ip = new_ip;
-        port = new_port;
-    }
-    public Master()
-    {
-        
-    }
-}
-
-// Communication to Master
-public class Client_Response
-{
-    public string message { get; set; }
-    public string blender_version { get; set; } = null;
-    public List<string> allowed_engines { get; set; }
-    public int limit_ram_use { get; set; }
-    public float limit_file_size { get; set; }
-    public float limit_time_frame { get; set; }
-    public List<bool> faulty { get; set; }
-    public List<int> frames { get; set; }
-    public List<string> files { get; set; }
-}
-
-// Communication from Master
-public class Master_Response
-{
-    public string message { get; set; }
-    public bool use_ftp { get; set; }
-    public bool use_sid_temporal { get; set; }
-    public string id { get; set; }
-    public float file_size { get; set; }
-    public string render_engine { get; set; }
-    public string file_format { get; set; }
-    public int first_frame { get; set; }
-    public int last_frame { get; set; }
-    public int frame_step { get; set; } = 1;
-
-}
-
-// PRF_Data object class
-public class PRF_Data
-{
-    public string os { get; set; } = "No data";
-    public List<string> cpus { get; set; } = new List<string> { "No data" };
-    public List<string> gpus { get; set; } = new List<string> { "No data" };
-    public int ram { get; set; } = 0;
-}
-
-// Menu_Item object class
-public class Menu_Item
-{
-    public string text { get; set; }
-    public bool selected { get; set; } = false;
-
-    public Menu_Item(string item_text = "")
-    {
-        text = item_text;
-    }
-}
-#endregion

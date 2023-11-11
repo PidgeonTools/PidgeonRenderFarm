@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using System;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Net;
@@ -12,65 +13,76 @@ class Master
     #region Global Variables
     // Initialize global variables
     // Initialize global File names, directories
-    public static string SCRIPT_DIRECTORY = Path.GetDirectoryName(System.Reflection.Assembly.GetEntryAssembly().Location);
-    public static string LOGS_DIRECTORY = "";
-    public static string LOGS_FILE = "";
-    public static string PROJECT_DIRECTORY = "";
-    public static string PROJECT_EXTENSION = ".prfp";
-    public static string SETTINGS_FILE = "";
-    public static string DATA_FILE = "";
-    public static string BACKUP_FILE = "";
+    public static string Bin_Directory = Path.GetDirectoryName(System.Reflection.Assembly.GetEntryAssembly().Location);
+    public static string Database_Directory = "";
+    public static string Project_Directory = "";
 
     // Create global objects and variables
-    public static string VERSION = "0.1.0-beta";
-    public static string ip_address_string = "127.0.0.1";
-    public static Settings SETTINGS;
-    public static PRF_Data PRF_DATA;
-    public static Project PROJECT;
-    public static List<int> frames_left = new List<int>();
-    private static readonly object frame_lock = new object();
-    private static readonly object done_lock = new object();
-    private static readonly object print_lock = new object();
-    public static SRF srf;
-    public static Progress_Bar progress_bar;
-    public static bool use_srf = false;
+    public static string IP_Address_String = "127.0.0.1";
+    public static MasterSettings Settings;
+    public static Project Project;
+    private static object Log_DB_Lock = new object();
+    private static object Project_DB_Lock = new object();
+    public static ProgressBar Progress_Bar;
+
+    public static WebClient Web_Client;
+
+    private static SettingsFileHandler Settings_File_Handler;
     #endregion
 
     // Runs at start
     static void Main(string[] args)
     {
-        // log the start time
-        DateTime start_time = DateTime.Now;
-
+        Master master = new Master();
+        master.Start(args);
+    }
+    public void Start(string[] args)
+    {
         // Get log directory name and create it
-        LOGS_DIRECTORY = Path.Join(SCRIPT_DIRECTORY, "logs");
-        if (!Directory.Exists(LOGS_DIRECTORY))
+        Database_Directory = Path.Join(Bin_Directory, "Database");
+        if (!Directory.Exists(Database_Directory))
         {
-            Directory.CreateDirectory(LOGS_DIRECTORY);
+            Directory.CreateDirectory(Database_Directory);
         }
 
         // Get the name for the current log, settings and data
-        LOGS_FILE = Path.Join(LOGS_DIRECTORY, ("master_" + start_time.ToString("HH_mm_ss") + ".txt"));
-        SETTINGS_FILE = Path.Join(SCRIPT_DIRECTORY, "master_settings.json");
-        DATA_FILE = Path.Join(SCRIPT_DIRECTORY, "master_data.json");
-        BACKUP_FILE = Path.Join(SCRIPT_DIRECTORY, "PRF_Console.txt");
+        //DATA_FILE = Path.Join(Bin_Directory, "master_data.json");
 
-        // Main loop start
-        Load_Settings();
-        Collect_Data();
+        Settings_File_Handler = new SettingsFileHandler(Path.Join(Bin_Directory, "master_settings.json"));
+        try
+        {
+            Settings = Settings_File_Handler.Load_Master_Settings();
+        }
+        catch (FileNotFoundException)
+        {
+            // Run setup
+            First_Time_Setup();
+        }
+        catch (FileLoadException)
+        {
+            // Run setup
+            First_Time_Setup();
+        }
+
+        // Initialize static classes
+        ProjectFileHandler.Bin_Directory = Bin_Directory;
+        DBHandler.Initialize(Settings.Database_Connection);
+        Logger.Enable_Logging = Settings.Enable_Logging;
+
+        new SystemInfo(Settings.Allow_Data_Collection, Bin_Directory);
 
         // If provided with arguments -> load them as project
         if (args.Length != 0)
         {
             try
             {
-                Write_Log(args[0]);
-                Load_Project_From_String(args[0]);
+                Logger.Log(this, args.ToString());
+                ProjectFileHandler.Load_Project_From_String(args[0]);
             }
             catch (Exception e)
             {
                 // Log errors
-                Write_Log(e.ToString());
+                Logger.Log(this, e.ToString(), "Error");
             }
         }
 
@@ -78,7 +90,7 @@ class Master
         Main_Menu();
     }
     
-    public static void Main_Menu()
+    void Main_Menu()
     {
         // Create list with all options and hand it to Menu()
         List<string> items = new List<string>
@@ -92,10 +104,12 @@ class Master
             "Exit"
         };
 
+        Menu menu = new Menu(items, "Master");
+
         while (true)
         {
             // Show the Menu and grab the selection
-            string selection = Menu(items, new List<string> { });
+            string selection = menu.Show();
 
             // Compare selection with options and execute function
             if (selection == items[0])
@@ -106,19 +120,29 @@ class Master
 
             else if (selection == items[1])
             {
-                // PRFP file
                 // Let user input a valid PRF project file
-                Show_Top_Bar();
-                Console.WriteLine("Where is your PidgeonRenderFarm project stored?");
-                string user_input = Console.ReadLine().Replace("\"", "");
-                while (!File.Exists(user_input) && !user_input.EndsWith(".prfp"))
+                Display.Show_Top_Bar("Master");
+
+                string user_input = "";
+                while (!File.Exists(user_input) && !user_input.EndsWith("prfp"))
                 {
-                    Console.WriteLine("Please input the path to your .prfp");
-                    user_input = Console.ReadLine().Replace("\"", "");
+                    Console.WriteLine("Where is your PidgeonRenderFarm project stored?");
+                    Console.WriteLine("Please input the path to your project");
+                    user_input = Console.ReadLine().Replace("\"", "").Replace("'", "");
                 }
 
-                // Load the project from the given file
-                Load_Project(user_input);
+                try
+                {
+                    // Load the project from the given file
+                    (Project, Project_Directory) = ProjectFileHandler.Load_Project(user_input);
+                    DBHandler.Initialize_Project_Table(Project.ID, true);
+                    // Render project
+                    Render_Project();
+                }
+                catch (FileLoadException)
+                {
+                    Logger.Log(this, "Invalid project file");
+                }
             }
 
             else if (selection == items[2])
@@ -154,149 +178,119 @@ class Master
         }
     }
 
-    public static void Render_Project()
+    void Render_Project()
     {
         Console.Clear();
-        progress_bar = new Progress_Bar(Get_Frames_Done().Count, PROJECT.frames_total, "Rendering: ");
+        Progress_Bar = new ProgressBar(Project.Last_Frame, "Rendering: ", Project.First_Frame, Project.Frame_Step);
 
-        // Get the local IPv4 of device
-        IPAddress ip_address = Get_IPv4();
-        ip_address_string = ip_address.ToString();
-        Show_Top_Bar(new List<string> {"Master IP address: " + ip_address_string
-                                       , "Master Port: " + SETTINGS.port.ToString()});
+        IPAddress ip_address = null;
+        if (string.IsNullOrWhiteSpace(Settings.IPv4_Overwrite))
+        {
+            // Get the local IPv4 of device
+            ip_address = Helpers.Get_IPv4();
+        }
+        else
+        {
+            ip_address = IPAddress.Parse(Settings.IPv4_Overwrite);
+        }
+        
+        IP_Address_String = ip_address.ToString();
+        Display.Show_Top_Bar("Master", new List<string> { $"Master IP address: {IP_Address_String}",
+                                                          $"Master Port: {Settings.Port}" });
 
         List<Thread> threads = new List<Thread>();
 
-        lock (print_lock)
-        {
-            Console.WriteLine(progress_bar.Get_Progress_Bar());
-        }
+        Progress_Bar.Show();
 
         // Create a end point with given IP and port
-        IPEndPoint local_end_point = new IPEndPoint(ip_address, SETTINGS.port);
+        IPEndPoint local_end_point = new IPEndPoint(ip_address, Settings.Port);
+
+        DateTime start_time = DateTime.Now;
 
         try
         {
             // Socket for clients initial connection (TCP)
-            Socket listener = new(ip_address.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
-            // Bind the end point to the new socket
-            listener.Bind(local_end_point);
-            // Set a maximum of 10 connected clients
-            listener.Listen(10);
+            TcpListener listener = new(IPAddress.Parse(IP_Address_String), Settings.Port);
+            listener.Start();
 
-            Console.WriteLine("Waiting for Clients...");
+            Logger.Log(this, "Waiting for Clients...");
 
             // While there are unrendered frames await clients
-            while (Get_Frames_Done().Count < PROJECT.frames_total)
+            while (DBHandler.Select_Frames_Table_All_Pending().Count > 0)
             {
                 try
                 {
-                    // Accept a new connection
-                    Socket handler = listener.Accept();
-
-                    // Log the time and ip of the Client connection
-                    DateTime connection_time = DateTime.Now;
-                    lock (print_lock)
+                    if (threads.Count < Settings.Client_Limit || Settings.Client_Limit == 0)
                     {
-                        Console.WriteLine("New connection: " + handler.RemoteEndPoint.ToString() + " @ " + connection_time.ToString("HH:mm:ss"));
-                        Write_Log("New connection: " + handler.RemoteEndPoint.ToString() + " @ " + connection_time.ToString("HH:mm:ss"));
+                        if (listener.Pending())
+                        {
+                            Socket handler = listener.AcceptSocket();
+
+                            Logger.Log(this, $"Client {handler.RemoteEndPoint} connected");
+
+                            Thread thread = new Thread(() => Client_Handler(handler));
+                            threads.Add(thread);
+                            thread.Start();
+                        }
+                        else
+                        {
+                            Thread.Sleep(5000);
+                        }
                     }
-
-                    Thread thread = new Thread(() => Client_Handler(handler, handler.RemoteEndPoint.ToString()));
-                    threads.Add(thread);
-                    thread.Start();
-
-                    // Continue in the Client_Handler()
-                    //Client_Handler(handler);
-                }
-                catch (Exception e)
-                {
-                    // Log errors
-                    lock (print_lock)
+                    else
                     {
-                        Console.WriteLine("An error occurred, trying to continue anyways... (see the log files for more details)");
-                        Write_Log(e.ToString());
+                        Logger.Log(this, $"Refused Client. Reason: too many Clients", "Warning");
+                        Thread.Sleep(1000);
                     }
                 }
-            }
-
-            foreach (Thread thread in threads)
-            {
-                try
+                catch (Exception ex)
                 {
-                    thread.Abort();
+                    Logger.Log(this, ex.ToString(), "Error");
                 }
-                catch { }
             }
-
-            //listener.Shutdown(SocketShutdown.Both);
-            listener.Close();
+            listener.Stop();
         }
-        catch (Exception e)
+        catch (Exception ex)
         {
             // Log errors
-            lock (print_lock)
-            {
-                Console.WriteLine(e.ToString());
-                Write_Log(e.ToString());
-            }
+            Logger.Log(this, ex.ToString(), "Error");
         }
 
-        //Console.WriteLine("Rendering done! You can go back to the main menu by press any key");
-        //Console.ReadKey();
+        Logger.Log(this, $"Rendering finished! After {DateTime.Now - start_time}");
 
-        DateTime end_time = DateTime.Now;
-        lock (print_lock)
-        {
-            Console.WriteLine("Rendering done! @" + end_time.ToString("HH:mm:ss"));
-            Write_Log("Rendering done! @" + end_time.ToString("HH:mm:ss"));
-        }
-
-        if (PROJECT.use_sid_temporal)
+        if (Project.Use_SID_Temporal)
         {
             // Prepare Blender arguments
-            string args = string.Format("-b \"{0}\" -P SID_Temporal_Bridge.py",
-                                 PROJECT.full_path_blend);
+            string args = $"-b \"{Project.Full_Path_Blend}\" -P SID_Temporal_Bridge.py";
 
             // Use Blender to render project
             Process process = new Process();
             // Set Blender as executable
-            process.StartInfo.FileName = SETTINGS.blender_executable;
+            process.StartInfo.FileName = Settings.Blender_Installations.FirstOrDefault(blender =>
+                                blender.Version.Split('.')[0] == Project.Blender_Version.Split('.')[0]
+                                && blender.Version.Split('.')[1] == Project.Blender_Version.Split('.')[1]).Executable;
             // Use the command string as args
             process.StartInfo.Arguments = args;
             process.StartInfo.CreateNoWindow = true;
             // Redirect output to log Blenders output
-            process.StartInfo.RedirectStandardOutput = true;
+            process.StartInfo.RedirectStandardOutput = Settings.Enable_Logging;
             process.Start();
-            // Print and log the output
-            string cmd_output = "";
-            while (!process.HasExited)
+            if (Settings.Enable_Logging)
             {
-                cmd_output += process.StandardOutput.ReadToEnd();
-                Console.WriteLine(cmd_output);
+                // Print and log the output
+                process.WaitForExit();
+                string cmd_output = process.StandardOutput.ReadToEnd();
+                Logger.Log(this, cmd_output);
             }
-            Write_Log(cmd_output);
 
-            end_time = DateTime.Now;
-            lock (print_lock)
-            {
-                Console.WriteLine("Denoising done! @" + end_time.ToString("HH:mm:ss"));
-                Write_Log("Denoising done! @" + end_time.ToString("HH:mm:ss"));
-            }
+            Logger.Log(this, $"Denoising finished! After {DateTime.Now - start_time}");
         }
 
-        if (!use_srf)
-        {
-            Console.WriteLine("You can go back to the main menu by pressing any key");
-            Console.ReadKey();
-        }
-        else
-        {
-            Environment.Exit(1);
-        }
+        Console.WriteLine("You can go back to the main menu by pressing any key");
+        Console.ReadKey();
     }
 
-    public static void Client_Handler(Socket client, string client_ip)
+    void Client_Handler(Socket client)
     {
         try
         {
@@ -305,61 +299,54 @@ class Master
             int received = client.Receive(buffer);
             // Convert bytes to string
             string json_receive = Encoding.UTF8.GetString(buffer, 0, received);
-            Client_Response client_response = null;
-            try
-            {
-                // Convert string to an object
-                client_response = JsonSerializer.Deserialize<Client_Response>(json_receive);
-            }
-            catch (Exception e)
-            {
-                if (json_receive == "SRF")
-                {
-                    srf = new SRF(client);
-                    lock (print_lock)
-                    {
-                        Console.WriteLine("Super Render Farm connected!");
-                    }
-                    return;
-                }
-
-                Write_Log(e.ToString());
-            }
-
-            while (use_srf && srf == null)
-            {
-                lock (print_lock)
-                {
-                    Console.WriteLine("SRF not connected, waiting");
-                    Write_Log("SRF not connected, waiting");
-                }
-                Thread.Sleep(1000);
-            }
+            ClientResponse client_response;
+            
+            // Convert string to an object
+            client_response = JsonSerializer.Deserialize<ClientResponse>(json_receive);
 
             // Prepare a new response and string
-            Master_Response master_response = new Master_Response();
+            MasterResponse master_response = new MasterResponse();
             string json_send;
 
             // Find out what the client wants
-            if (client_response.message == "new")
+            if (client_response.Message == "new")
             {
                 // If Client wants work, check if frames are left
-                List<int> frames = Aquire_Frames(client_response);
+                List<Frame> frames = Aquire_Frames(client_response, client.RemoteEndPoint.ToString().Split(':')[0]);
 
-                master_response.message = "NAN";
+                master_response.Message = "NAN";
 
                 // If frames left, then provide Client with information about the project
-                if (frames.Count != 0)
+                if (frames.Count > 0)
                 {
-                    master_response.message = "here";
-                    master_response.id = PROJECT.id;
-                    master_response.file_size = new FileInfo(PROJECT.full_path_blend).Length;
-                    master_response.first_frame = frames.First();
-                    master_response.last_frame = frames.Last();
-                    master_response.frame_step = PROJECT.frame_step;
-                    master_response.render_engine = PROJECT.render_engine;
-                    master_response.file_format = PROJECT.output_file_format;
-                    master_response.use_sid_temporal = PROJECT.use_sid_temporal;
+                    master_response.Message = "here";
+                    master_response.ID = Project.ID;
+                    master_response.File_Size = new FileInfo(Project.Full_Path_Blend).Length;
+                    master_response.Frames = frames;
+                    master_response.Frame_Step = Project.Frame_Step;
+                    master_response.Render_Engine = Project.Render_Engine;
+                    master_response.File_Format = Project.Output_File_Format;
+                    master_response.Use_SID_Temporal = Project.Use_SID_Temporal;
+
+                    if (Project.File_transfer_Mode == FileTransferMode.SMB)
+                    {
+                        master_response.File_transfer_Mode = FileTransferMode.SMB;
+
+                        if (client_response.Is_Windows)
+                        {
+                            master_response.Connection_String = Settings.SMB_Connection.Get_Windows_String();
+                        }
+                        else
+                        {
+                            master_response.Connection_String = Settings.SMB_Connection.Get_Unix_String();
+                        }
+                    }
+                    else if (Project.File_transfer_Mode == FileTransferMode.FTP)
+                    {
+                        master_response.File_transfer_Mode = FileTransferMode.FTP;
+
+                        master_response.Connection_String = Settings.FTP_Connection.Connection_String;
+                    }
                 }
 
                 // Convert the object to string
@@ -369,195 +356,123 @@ class Master
                 // Send bytes to client
                 client.Send(bytes_send);
 
-                if (master_response.message == "NAN")
+                if (master_response.Message == "NAN")
                 {
-                    // Cut the connection
-                    client.Shutdown(SocketShutdown.Both);
-                    client.Close();
-
-                    string log = "no frames assigned to: " + client_ip;
-                    lock (print_lock)
-                    {
-                        Console.WriteLine(log);
-                        Write_Log(log);
-                    }
-
-                    return;
+                    Logger.Log(this, $"No frames assigned to {client.RemoteEndPoint}");
                 }
-
                 else
                 {
-                    string log = string.Format("Frame {0} - {1} assigned to {2}",
-                                        master_response.first_frame,
-                                        master_response.last_frame,
-                                        client.RemoteEndPoint.ToString());
-                    lock (print_lock)
+                    Logger.Log(this, $"Frame {frames.First().Id} - {frames.Last().Id} assigned to {client.RemoteEndPoint}");
+
+                    if (Project.File_transfer_Mode == FileTransferMode.TCP)
                     {
-                        Console.WriteLine(log);
-                        Write_Log(log);
-                    }
-                }
+                        // Receive message from client
+                        buffer = new byte[1024];
+                        received = client.Receive(buffer);
+                        // Convert bytes to string
+                        json_receive = Encoding.UTF8.GetString(buffer, 0, received);
+                        // Convert string to an object
+                        client_response = JsonSerializer.Deserialize<ClientResponse>(json_receive);
 
-                // Receive message from client
-                buffer = new byte[1024];
-                received = client.Receive(buffer);
-                // Convert bytes to string
-                json_receive = Encoding.UTF8.GetString(buffer, 0, received);
-                // Convert string to an object
-                client_response = JsonSerializer.Deserialize<Client_Response>(json_receive);
-
-                // If the client doesn't have the .Blend, send it to him
-                if (client_response.message == "needed")
-                {
-                    client.SendFile(PROJECT.full_path_blend);
-                }
-
-                if (srf != null)
-                {
-                    foreach (int frame in frames)
-                    {
-                        srf.Send_Update(frame, "rendering");
+                        // If the client doesn't have the .Blend, send it to him
+                        if (client_response.Message == "needed")
+                        {
+                            client.SendFile(Project.Full_Path_Blend);
+                        }
                     }
                 }
             }
 
-            else if (client_response.message == "output")
+            else if (client_response.Message == "output")
             {
                 // If Client is done rendering execute this
                 // Check if Clients work is any good
                 // If it isn't add his frames back
-                if (!client_response.faulty.Contains(false))
-                {
-                    Add_Frames(client_response.frames);
+                List<Frame> faulty_frames = client_response.Frames.Where(frame => frame.Quality == false).ToList();
 
-                    if (srf != null)
+                if (faulty_frames.Count > 0)
+                {
+                    lock (Project_DB_Lock)
                     {
-                        foreach (int frame in client_response.frames)
-                        {
-                            srf.Send_Update(frame, "waiting");
-                        }
+                        DBHandler.Update_Frames_Table(faulty_frames);
                     }
+
+                    client_response.Frames.RemoveAll(frame => faulty_frames.Contains(frame));
                 }
 
-                else
+                // Generate a file name
+                string zip_file = client_response.Frames.First().Id + "_" + client_response.Frames.Last().Id + ".zip";
+
+                lock (Project_DB_Lock)
                 {
-                    // Send a message to the Client to syncronize
-                    byte[] bytes_send = Encoding.UTF8.GetBytes("drop");
-                    client.Send(bytes_send);
-
-                    // Generate a file name
-                    string zip_file = client_response.frames.First() + "_" + client_response.frames.Last() + ".zip";
-                    // Generate a path for the file
-                    string path = Path.Join(PROJECT_DIRECTORY, zip_file);
-                    // Download the file into the path
-                    using (FileStream file_stream = File.Create(path))
+                    // If not all frames are faulty
+                    if (faulty_frames.Count != client_response.Frames.Count &&
+                    Project.File_transfer_Mode == FileTransferMode.TCP)
                     {
-                        new NetworkStream(client).CopyTo(file_stream);
-                    }
-                    // Extract the contents
-                    ZipFile.ExtractToDirectory(path, PROJECT_DIRECTORY);
-
-                    string log = string.Format("Frame {0} - {1} downloaded from {2}",
-                                               client_response.frames.First(),
-                                               client_response.frames.Last(),
-                                               client.RemoteEndPoint.ToString());
-                    lock (print_lock)
-                    {
-                        Console.WriteLine(log);
-                        Write_Log(log);
-                    }
-
-                    // Initialize list for checking "good" frames
-                    List<int> done = new List<int>();
-                    // Initialize list for checking "bad" frames
-                    List<int> bad = new List<int>{};
-
-                    string base_directory = PROJECT_DIRECTORY;
-
-                    if (master_response.use_sid_temporal)
-                    {
-                        base_directory = Path.Join(base_directory, "noisy");
-                        string[] dirs = Directory.GetDirectories(base_directory);
-
-                        int highest = 0;
-
-                        foreach (string dir in dirs)
+                        // Send a message to the Client to syncronize
+                        byte[] bytes_send = Encoding.UTF8.GetBytes("drop");
+                        client.Send(bytes_send);
+                    
+                        // Generate a path for the file
+                        string path = Path.Join(Project_Directory, zip_file);
+                        Logger.Log(this, $"test");
+                        // Download the file into the path
+                        using (FileStream file_stream = File.Create(path))
                         {
-                            int dir_number = int.Parse(dir.Split(Path.DirectorySeparatorChar).Last());
-
-                            if (dir_number >= highest)
-                            {
-                                highest = dir_number;
-                            }
+                            new NetworkStream(client).CopyTo(file_stream);
                         }
 
-                        base_directory = Path.Join(base_directory, highest.ToString());
+                        Logger.Log(this, $"Frame {client_response.Frames.First().Id} - {client_response.Frames.Last().Id} downloaded from {client.RemoteEndPoint}");
                     }
 
-                    // Check for every frame
-                    foreach (string file in client_response.files)
+                    else if (faulty_frames.Count != client_response.Frames.Count &&
+                        Project.File_transfer_Mode == FileTransferMode.SMB)
                     {
-                        // If the file exsists add it to list
-                        if (File.Exists(Path.Join(base_directory, file)))
+                        string remote_path = Path.Join(Settings.SMB_Connection.Connection_String, Project_Directory, zip_file);
+                        if (Project.Download_Remote_Input)
                         {
-                            // Index for every file and the frame is the same,
-                            // so use position of file for the frame
-                            done.Add(client_response.frames[client_response.files.IndexOf(file)]);
-
-                            if (srf != null)
+                            if (File.Exists(remote_path))
                             {
-                                srf.Send_Update(client_response.frames[client_response.files.IndexOf(file)], "done");
+                                File.Copy(remote_path, Path.Join(Project_Directory, zip_file));
                             }
-                        }
-
-                        else
-                        {
-                            bad.Add(client_response.frames[client_response.files.IndexOf(file)]);
-
-                            if (srf != null)
+                            else
                             {
-                                srf.Send_Update(client_response.frames[client_response.files.IndexOf(file)], "waiting");
+                                Logger.Log(this, "ZIP file does not exist");
                             }
                         }
                     }
 
-                    log = string.Format("Frame {0} - {1} rendered!",
-                                        client_response.frames.First(),
-                                        client_response.frames.Last());
-                    lock (print_lock)
+                    else if (faulty_frames.Count != client_response.Frames.Count &&
+                        Project.File_transfer_Mode == FileTransferMode.FTP)
                     {
-                        Console.WriteLine(log);
-                        Write_Log(log);
-                    }
+                        string remote_path = Path.Join(Settings.FTP_Connection.Connection_String, Project_Directory, zip_file);
 
-                    // Append the completed frames
-                    Add_Frames_Done(done);
-                    // Append the bad frames
-                    Add_Frames(bad);
-
-                    //Update_View(progress_bar.Update_Progress_Bar(done.Count));
-                    lock (print_lock)
-                    {
-                        Console.WriteLine(progress_bar.Update_Progress_Bar(done.Count));
+                        try
+                        {
+                            Web_Client.DownloadFile(remote_path, Path.Join(Project_Directory, zip_file));
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Log(this, $"File does not exist on remote directory. Exception: {ex}", "Error");
+                        }
                     }
+                
+                    Verify_Frames(client_response.Frames, zip_file, Project.ID);
                 }
+                
             }
 
-            else if (client_response.message == "ping")
+            else if (client_response.Message == "ping")
             {
                 // If Client is pinging master
                 // Return "pong"
-                master_response.message = "pong";
+                master_response.Message = "pong";
                 // Convert the object to string
                 json_send = JsonSerializer.Serialize(master_response);
                 // Convert string to bytes
                 byte[] bytes_send = Encoding.UTF8.GetBytes(json_send);
 
-                lock (print_lock)
-                {
-                    Console.WriteLine("Received ping! Returning pong");
-                    Write_Log("Received ping! Returning pong");
-                }
+                Logger.Log(this, "Received ping! Returning pong");
 
                 client.Send(bytes_send);
             }
@@ -567,327 +482,327 @@ class Master
             client.Close();
         }
 
-        catch (Exception e)
+        catch (Exception ex)
         {
-            // Log errors
-            lock (print_lock)
-            {
-                Console.WriteLine("An error occurred, trying to continue anyways... (see the log files for more details)");
-                Write_Log(e.ToString());
-            }
+            Logger.Log(this, ex.ToString(), "Error");
         }
     }
-    // Re-add frames to the frames remaining
-    public static void Add_Frames(List<int> frames)
-    {
-        // Make sure to only change a thing at once
-        lock (frame_lock)
-        {
-            // Append all frames from list
-            foreach (int frame in frames)
-            {
-                frames_left.Add(frame);
-            }
-        }
-    }
-    // Get the frames currently left
-    public static List<int> Get_Frames()
-    {
-        // Make sure to only change a thing at once
-        // Return the frames left
-        lock (frame_lock)
-        {
-            return frames_left;
-        }
-    }
-    // Aquire frames for the Client
-    public static List<int> Aquire_Frames(Client_Response requirements)
-    {
-        // Have an empty list ready
-        List<int> empty_list = new List<int>{};
 
+    void Verify_Frames(List<Frame> frames, string file, string project_ID)
+    {
+        List<Frame> valid_frames = new List<Frame>();
+        List<Frame> faulty_frames = new List<Frame>();
+
+        string base_directory = Bin_Directory;
+
+        if (Project.File_transfer_Mode == FileTransferMode.SMB &&
+            !Project.Download_Remote_Input)
+        {
+            base_directory = Settings.SMB_Connection.Connection_String;
+        }
+
+        base_directory = Path.Join(base_directory, project_ID);
+        string zip_path = Path.Join(base_directory, file);
+
+        // Extract the contents
+        if (File.Exists(zip_path))
+        {
+            ZipFile.ExtractToDirectory(zip_path, base_directory);
+        }
+        else
+        {
+            // Check for every frame
+            foreach (Frame frame in frames)
+            {
+                faulty_frames.Add(new Frame
+                {
+                    Id = frame.Id,
+                    State = "Open"
+                });
+            }
+
+            lock (Project_DB_Lock)
+            {
+                DBHandler.Update_Frames_Table(faulty_frames);
+            }
+
+            return;
+        }
+
+        if (Project.Use_SID_Temporal)
+        {
+            if (Directory.Exists(Path.Join(base_directory, "noisy")))
+            {
+                base_directory = Path.Join(base_directory, "noisy");
+            }
+            else if (Directory.Exists(Path.Join(base_directory, "processing")))
+            {
+                base_directory = Path.Join(base_directory, "processing");
+            }
+            else
+            {
+                foreach (Frame frame in frames)
+                {
+                    faulty_frames.Add(new Frame
+                    {
+                        Id = frame.Id,
+                        State = "Open"
+                    });
+                }
+
+                lock (Project_DB_Lock)
+                {
+                    DBHandler.Update_Frames_Table(faulty_frames);
+                }
+
+                return;
+            }
+
+            string[] dirs = Directory.GetDirectories(base_directory);
+
+            int highest = 0;
+
+            foreach (string dir in dirs)
+            {
+                int dir_number = int.Parse(dir.Split(Path.DirectorySeparatorChar).Last());
+
+                if (dir_number >= highest)
+                {
+                    highest = dir_number;
+                }
+            }
+
+            base_directory = Path.Join(base_directory, highest.ToString());
+        }
+
+        // Check for every frame
+        foreach (Frame frame in frames)
+        {
+            // If the file exsists add it to list
+            if (File.Exists(Path.Join(base_directory, frame.File_Name)))
+            {
+                // Index for every file and the frame is the same,
+                // so use position of file for the frame
+                valid_frames.Add(new Frame
+                {
+                    Id = frame.Id,
+                    State = "Rendered"
+                });
+            }
+
+            else
+            {
+                faulty_frames.Add(new Frame
+                {
+                    Id = frame.Id,
+                    State = "Open"
+                }); ;
+            }
+        }
+        
+        DBHandler.Update_Frames_Table(valid_frames);
+        DBHandler.Update_Frames_Table(faulty_frames);
+
+        Logger.Log(this, $"Frame {frames.First().Id} - {frames.Last().Id} rendered!");
+    }
+
+    // Aquire frames for the Client
+    List<Frame> Aquire_Frames(ClientResponse requirements, string ipv4)
+    {
+        List<Frame> old_frames = new List<Frame>();
+        lock (Project_DB_Lock)
+        {
+            old_frames = DBHandler.Select_Assigned_Frames_Table(ipv4);
+        }
+        
+        if (old_frames.Count > 0)
+        {
+            foreach (Frame frame in old_frames)
+            {
+                frame.State = "Open";
+            }
+
+            DBHandler.Update_Frames_Table(old_frames);
+        }
+
+        // Have an empty list ready
+        List<Frame> empty_list = new List<Frame>{};
         // If Client Blender version does not match
         // Don't give him frames
-        if (requirements.blender_version != PROJECT.blender_version)
+        List<Blender> tmp = requirements.Blender_Installations.Where(blender =>
+                                blender.Version.Split('.')[0] == Project.Blender_Version.Split('.')[0]
+                                && blender.Version.Split('.')[1] == Project.Blender_Version.Split('.')[1]).ToList();
+
+        if (tmp.Count == 0)
         {
             return empty_list;
         }
 
         // If Client is not allowed to use engine
         // Don't give him frames
-        if (!requirements.allowed_engines.Contains(PROJECT.render_engine) && !requirements.allowed_engines.Contains("other"))
+        bool has_render_engine = false;
+
+        foreach (Blender blender in tmp)
+        {
+            if (blender.Allowed_Render_Engines.Contains(Project.Render_Engine)
+                || blender.Allowed_Render_Engines.Contains("other")) ;
+            {
+                has_render_engine = true;
+            }
+        }
+
+        if (!has_render_engine)
         {
             return empty_list;
         }
 
         // If Client doesn't allow for as much time
         // Don't give him frames
-        if (requirements.limit_time_frame != 0)
+        if (requirements.Render_Time_Limit != 0
+            && requirements.Render_Time_Limit < Project.Time_Per_Frame)
         {
-            if (requirements.limit_time_frame < PROJECT.time_per_frame)
-            {
-                return empty_list;
-            }
+            return empty_list;
         }
 
         // If Client doesn't want to use as much RAM
         // Don't give him frames
-        if (requirements.limit_ram_use != 0)
+        if (requirements.RAM_Use_Limit != 0
+            && requirements.RAM_Use_Limit < Project.RAM_Use)
         {
-            if (requirements.limit_ram_use < PROJECT.ram_use)
-            {
-                return empty_list;
-            }
+            return empty_list;
         }
 
         // Make sure to only change a thing at once
-        lock (frame_lock)
+        lock (Project_DB_Lock)
         {
-            if (frames_left.Count == 0)
+            List<Frame> frames = DBHandler.Select_Frames_Table(Project.Batch_Size);
+
+            if (frames.Count == 0)
             {
                 return empty_list;
             }
 
             // Create a list with frames for Client
-            List<int> frames_picked = new List<int> { };
-            // Set the first frame to the first frame left
-            int first_frame = frames_left.Min();
+            List<Frame> frames_picked = new List<Frame>();
 
-            // Itterate as long as we are within the batch size
-            for (int batch = 0; batch <= PROJECT.batch_size* PROJECT.frame_step; batch += PROJECT.frame_step)
+            int next_frame = frames[0].Id;
+            foreach (Frame frame in frames)
             {
-                // If there are no frames left, return the picked ones
-                if (frames_left.Count == 0)
+                if (frame.Id == next_frame)
                 {
-                    return frames_picked;
+                    frames_picked.Add(new Frame
+                    {
+                        Id = frame.Id,
+                        State = "Rendering",
+                        IPv4 = ipv4
+                    });
+                    next_frame = frame.Id + 1;
                 }
-
-                // If out frame is left, add it to the picked frames
-                // and remove it from the frames left
-                if (frames_left.Contains(first_frame + batch))
-                {
-                    frames_picked.Add(first_frame + batch);
-                    frames_left.Remove(first_frame + batch);
-                }
-
-                // If there is not another continous frames
-                // return the picked ones
                 else
                 {
-                    return frames_picked;
+                    break;
                 }
             }
 
-            // Fail safe
+            DBHandler.Update_Frames_Table(frames_picked);
+
             return frames_picked;
         }
     }
 
-    // Add a completed frame
-    public static void Add_Frames_Done(List<int> frames)
-    {
-        // Make sure to only change a thing at once
-        lock (done_lock)
-        {
-            foreach (int frame in frames)
-            {
-                PROJECT.frames_complete.Add(frame);
-            }
-
-            Save_Project();
-        }
-    }
-    // Get the frames done
-    public static List<int> Get_Frames_Done()
-    {
-        // Make sure to only change a thing at once
-        lock (done_lock)
-        {
-            return PROJECT.frames_complete;
-        }
-    }
-
-    #region Menu_Display
-    // Open a semi-graphical menu allowing easy user input
-    public static string Menu(List<string> options, List<string> headlines)
-    {
-        // Hide cursor
-        int selected = 0;
-        Console.CursorVisible = false;
-
-        // Create and fill list with given options
-        List<Menu_Item> items = new List<Menu_Item>();
-        foreach (string option in options)
-        {
-            items.Add(new Menu_Item(option));
-        }// Create empty settings object
-        Settings new_settings = new Settings();
-        // Make the 1st option the default
-        items[0].selected = true;
-
-        // Infinite loop
-        while (true)
-        {
-            // Clear everything and show the top bar
-            Console.Clear();
-            Show_Top_Bar();
-
-            // Show an additional promt if given
-            if (headlines.Count != 0)
-            {
-                // Print every line
-                foreach (string headline in headlines)
-                {
-                    Console.WriteLine(headline);
-                }
-                //Console.WriteLine("#--------------------------------------------------------------#");
-                //Console.WriteLine("");
-            }
-
-            // GO through all items and color them depending on the selection
-            foreach (Menu_Item item in items)
-            {
-                if (item.selected)
-                {
-                    Console.ForegroundColor = ConsoleColor.Black;
-                    Console.BackgroundColor = ConsoleColor.White;
-                }
-
-                Console.WriteLine(item.text);
-
-                Console.ForegroundColor = ConsoleColor.White;
-                Console.BackgroundColor = ConsoleColor.Black;
-            }
-
-            // Wait for user input
-            ConsoleKeyInfo keyInfo = Console.ReadKey();
-            ConsoleKey key = keyInfo.Key;
-
-            // If possible go up in list
-            if (key == ConsoleKey.UpArrow && selected != 0)
-            {
-                items[selected].selected = false;
-
-                selected--;
-
-                items[selected].selected = true;
-            }
-
-            // If possible go down in list
-            else if (key == ConsoleKey.DownArrow && selected != (items.Count() - 1))
-            {
-                items[selected].selected = false;
-
-                selected++;
-
-                items[selected].selected = true;
-            }
-
-            // Return the current selection and break out of the loop
-            // Show the cursor
-            else if (key == ConsoleKey.Enter)
-            {
-                Console.Clear();
-                Console.CursorVisible = true;
-                return items[selected].text;
-            }
-        }
-    }
-
-    // Print the top bar
-    public static void Show_Top_Bar(List<string> addition = null)
-    {
-        lock (print_lock)
-        {
-            Console.WriteLine("Pidgeon Render Farm - Master");
-            Console.WriteLine("Join the Discord server for support - https://discord.gg/cnFdGQP");
-            Console.WriteLine("");
-
-            if (addition != null)
-            {
-                foreach (string line in addition)
-                {
-                    Console.WriteLine(line);
-                }
-
-                Console.WriteLine("");
-            }
-
-            Console.WriteLine("#--------------------------------------------------------------#");
-            Console.WriteLine("");
-        }
-    }
-
-    public static void Update_View(string progress_bar)
-    {
-        Console.Clear();
-        Show_Top_Bar(new List<string> {"Master IP address: " + ip_address_string
-                                       , "Master Port: " + SETTINGS.port.ToString()
-                                       , progress_bar});
-
-        foreach (string line in File.ReadLines(BACKUP_FILE))
-        {
-            Console.WriteLine(line);
-        }
-    }
-
-    public static void Print(string content)
-    {
-        lock (print_lock)
-        {
-            Console.WriteLine(content);
-            File.AppendAllText(BACKUP_FILE, content);
-        }
-    }
-    #endregion
-
     #region Setup
-    public static void First_Time_Setup()
+    void First_Time_Setup()
     {
         // Create empty settings object
-        Settings new_settings = new Settings();
+        Settings = new MasterSettings();
         // Removes the need to type "new List<string> { "Yes", "No" }" every time
-        List<string> basic_bool = new List<string> { "Yes", "No" };
+        List<string> basic_bool = new List<string> { "No", "Yes" };
+        string user_input = "";
 
-        // Write version - for updating in the future
-        new_settings.version = VERSION;
+        Settings.Database_Connection = new DBConnection(DBMode.SQLite, Database_Directory);
+        Settings.SMB_Connection = new SMBConnection("", "", "");
+        Settings.FTP_Connection = new FTPConnection("", "", "");
 
         // Enable logging
         // Use Menu() to grab user input
-        new_settings.enable_logging = Parse_Bool(Menu(basic_bool, new List<string> { "Enable logging? (It is recommended to turn this on. To see whats included please refer to the documentation!)" }));
+        Menu menu = new Menu
+        (
+            basic_bool,
+            "Master",
+            new List<string> { "Enable logging? (It is recommended to turn this on.)" }
+        );
+        Settings.Enable_Logging = Helpers.Parse_Bool(menu.Show());
 
         // Port
         // Let the user input a valid port
         // If emtpy, then use default port
-        Show_Top_Bar();
-        Console.WriteLine("Which Port to use? (Default: 19186):");
-        string user_input = Console.ReadLine();
-        while (!Is_Port(user_input))
+        Display.Show_Top_Bar("Master");
+        while (!Helpers.Is_Port(user_input))
         {
-            if (user_input == "")
+            Console.WriteLine("Which Port to use? (Default: 19186):");
+            Console.WriteLine("Please input a whole number between 1 and 65535 (or leave empty for the default value)");
+            user_input = Console.ReadLine();
+
+            if (string.IsNullOrWhiteSpace(user_input))
             {
                 user_input = "19186";
-                break;
             }
-
-            Console.WriteLine("Please input a whole number between 1 and 65536");
-            user_input = Console.ReadLine();
         }
-        new_settings.port = Math.Abs(int.Parse(user_input));
+        Settings.Port = int.Parse(user_input);
         Console.Clear();
 
         // Blender Executable
         // Check if the file exsists
-        Show_Top_Bar();
-        Console.WriteLine("Where is your blender executable stored? (It's recommended not to use blender-launcher)");
-        user_input = Console.ReadLine().Replace("\"", "");
-        while (!File.Exists(user_input))
+        Settings.Blender_Installations = new List<Blender>();
+        Display.Show_Top_Bar("Master");
+        Console.WriteLine("You now have the option to add multiple Blender installations.");
+        Console.WriteLine("You need to add at least one installation.");
+        Console.WriteLine("");
+        while (true)
         {
+            Console.WriteLine("Where is your blender executable stored? (It's recommended NOT to use blender-launcher)");
             Console.WriteLine("Please input the path to your blender executable");
-            user_input = Console.ReadLine().Replace("\"", "");
-            user_input = user_input.Replace("'", "");
+            user_input = Console.ReadLine().Replace("\"", "").Replace("'", "");
+
+            if (string.IsNullOrWhiteSpace(user_input) && Settings.Blender_Installations.Count > 0)
+            {
+                break;
+            }
+
+            else if (File.Exists(user_input))
+            {
+                // Prepare Blender arguments
+                string args = "-b -P Get_Version.py";
+
+                // Use Blender to obtain the render engines and Blender version
+                Process process = new Process();
+                // Set Blender as executable
+                process.StartInfo.FileName = user_input;
+                // Use the command string as args
+                process.StartInfo.Arguments = args;
+                process.StartInfo.CreateNoWindow = true;
+                // Redirect output to log Blenders output
+                //process.StartInfo.RedirectStandardOutput = true;
+                process.Start();
+                // Log the output
+                process.WaitForExit();
+                //string cmd_output = process.StandardOutput.ReadToEnd();
+                //Write_Log(cmd_output, enable_logging);
+
+                // Split the content of the file into a List
+                List<string> engines = new List<string>();
+                List<string> lines = File.ReadLines(Path.Join(Bin_Directory, "version.txt")).ToList();
+                string version_string = lines[0];
+
+                Settings.Blender_Installations.Add(new Blender
+                {
+                    Executable = user_input,
+                    Version = version_string,
+                });
+
+                Console.WriteLine("Would you like to add another installation? (leave empty for no; paste the path for yes)");
+            }
         }
-        new_settings.blender_executable = user_input;
         Console.Clear();
 
         // FFMPEG Executable
@@ -902,127 +817,119 @@ class Master
         }
         new_settings.ffmpeg_executable = user_input;*/
 
-        // Keep output
+        // Allow computation
         // Use Menu() to grab user input
-        //new_settings.keep_output = Parse_Bool(Menu(basic_bool, new List<string> { "Keep the files received from the clients?" }));
-
-        // Use FTP
-        // Use Menu() to grab user input
-        //new_settings.use_ftp = Parse_Bool(Menu(basic_bool, new List<string> { "Use 'File Transfer Protocol' instead of sockets for file distribution?" }));
+        menu = new Menu
+        (
+            basic_bool,
+            "Master",
+            new List<string> { "Allow computation on the master?" }
+        );
+        Settings.Allow_Computation = Helpers.Parse_Bool(menu.Show());
 
         // Data collection
         // Use Menu() to grab user input
-        new_settings.collect_data = Parse_Bool(Menu(basic_bool, new List<string> { "Allow us to collect data? (it is only stored locally for debugging purposes)" }));
+        menu = new Menu
+        (
+            basic_bool,
+            "Master",
+            new List<string> { "Save debug data? (it is only stored locally)",
+                               "You can find a list of all the data stored in the documentation" }
+        );
+        Settings.Allow_Data_Collection = Helpers.Parse_Bool(menu.Show());
+
+        Logger.Enable_Logging = Settings.Enable_Logging;
 
         // Save the settings
-        Save_Settings(new_settings);
-    }
+        Settings_File_Handler.Save_Settings(Settings);
 
-    // Save settings based on a new set
-    public static void Save_Settings(Settings new_settings)
-    {
-        // Update global settings object
-        SETTINGS = new_settings;
+        Display.Show_Top_Bar("Master");
+        Console.WriteLine("Setup complete!");
+        Console.WriteLine("You can find more and experimental settings in the file 'master_settings.json'");
+        Console.WriteLine("Press any key to continue.");
 
-        // Convert object to json
-        var options = new JsonSerializerOptions { WriteIndented = true };
-        string jsonString = JsonSerializer.Serialize(SETTINGS, options);
-
-        // Write to file
-        File.WriteAllText(SETTINGS_FILE, jsonString);
-    }
-
-    // Load the settings
-    public static void Load_Settings(string custom_file = "")
-    {
-        if (custom_file == "")
-        {
-            custom_file = SETTINGS_FILE;
-        }
-
-        // Check if settings exsist, else run setup
-        if (!File.Exists(custom_file))
-        {
-            First_Time_Setup();
-            return;
-        }
-
-        // Load string from file and convert it to object
-        // Update global settings object
-        string json_string = File.ReadAllText(custom_file);
-        SETTINGS = JsonSerializer.Deserialize<Settings>(json_string);
+        Console.ReadKey();
     }
     #endregion
 
     #region Project_Setup
     // Run the setup for the project
-    public static void Project_Setup()
+    void Project_Setup()
     {
         // Create empty project
-        Project new_project = new Project();
+        Project = new Project();
 
-        List<string> basic_bool = new List<string> { "Yes", "No" };
+        List<string> basic_bool = new List<string> { "No", "Yes" };
+        string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
-        // +1 on data file
-        Save_Data();
-        // Generate ID based on project number
-        new_project.id = PRF_DATA.projects.ToString();
+        // Credits: https://stackoverflow.com/users/76217/dtb
+        Random random = new Random();
+        Project.ID = new string(Enumerable.Repeat(chars, 8).Select(s => s[random.Next(s.Length)]).ToArray());
 
         // Blend file
         // Let user input a valid Blender project file
-        Show_Top_Bar();
-        Console.WriteLine("Where is your .blend stored? (Be sure to actually use a .blend)");
-        string user_input = Console.ReadLine().Replace("\"", "");
-        while (!File.Exists(user_input) && !user_input.EndsWith(".blend"))
+        Display.Show_Top_Bar("Master");
+        Console.WriteLine("Where is your Blender project stored?");
+        string user_input = "";
+        while (!File.Exists(user_input) && (!user_input.ToLower().EndsWith(".blend") || !user_input.ToLower().EndsWith(".blend1")))
         {
             Console.WriteLine("Please input the path to your .blend");
-            user_input = Console.ReadLine().Replace("\"", "");
+            user_input = Console.ReadLine().Replace("\"", "").Replace("'", "");
         }
-        new_project.full_path_blend = user_input;
+        Project.Full_Path_Blend = user_input;
 
         // Use SuperFastRender
         // Use Menu() to grab user input
-        bool use_sfr = Parse_Bool(Menu(basic_bool, new List<string> { "Use SuperFastRender (with default settings) to optimize the rendering process?" }));
+        Menu menu = new Menu
+        (
+            basic_bool,
+            "Master",
+            new List<string> { "Use SuperFastRender (with default settings) to optimize the rendering process?" }
+        );
+        Project.Use_SFR = Helpers.Parse_Bool(menu.Show());
 
-        // Use SuperFastRender
+        // Use SuperImageDenoiser Temporal
         // Use Menu() to grab user input
-        new_project.use_sid_temporal = Parse_Bool(Menu(basic_bool, new List<string> { "Use SuperImageDenoiser Temporal (with default settings) for denoising? You will lose 1 frame at the start and 2 frames at the end of your animation." }));
+        menu = new Menu
+        (
+            basic_bool,
+            "Master",
+            new List<string> { "Use SuperImageDenoiser Temporal (with default settings) for denoising? You will lose 1 frame at the start and 2 frames at the end of your animation." }
+        );
+        Project.Use_SID_Temporal = Helpers.Parse_Bool(menu.Show());
 
         // Render test frame (for time)
         // Use Menu() to grab user input
-        bool test_render = Parse_Bool(Menu(basic_bool,
-                                           new List<string> { "Render a test frame? (Will take some time, for client option 'Maximum time per frame')" }));
+        menu = new Menu
+        (
+            basic_bool,
+            "Master",
+            new List<string> { "Render a test frame? (Will take some time)",
+                               "Used for Client time limit and analytics." }
+        );
+        Project.Render_Test_Frame = Helpers.Parse_Bool(menu.Show());
 
         // Batch size
         // Let user input a valid size
-        Show_Top_Bar();
-        Console.WriteLine("Batch size:");
-        user_input = Console.ReadLine();
+        Display.Show_Top_Bar("Master");
+        user_input = "";
         while (!int.TryParse(user_input, out _))
         {
+            Console.WriteLine("Batch size:");
             Console.WriteLine("Please input a whole number");
             user_input = Console.ReadLine();
         }
-        new_project.batch_size = Math.Abs(int.Parse(user_input));
+        Project.Batch_Size = Math.Abs(int.Parse(user_input));
         Console.Clear();
 
-        // Use ZIP
-        // Use Menu() to grab user input
-        //new_project.use_zip = Parse_Bool(Menu(basic_bool, new List<string> { "Zip/compress files before distributing? (might save some bandwitdh at the cost of image quality; recommended to use with Batches)" }));
-
-        // Generate a video file
-        // Use Menu() to grab user input
-        //new_project.video_generate = Parse_Bool(Menu(basic_bool,
-        //                                             new List<string> { "Generate a video file? (MP4-Format, FFMPEG has to be installed!)" }));
-
-        new_project.video_generate = false;
+        Project.Video_Generate = false;
 
         // Only required if we generate a video
-        if (new_project.video_generate)
+        /*if (Project.Video_Generate)
         {
             // Video FPS
             // Let user input a valid value
-            Show_Top_Bar();
+            Display.Show_Top_Bar("Master");
             Console.WriteLine("Video frames per second: (Default: 24)");
             user_input = Console.ReadLine();
             while (!int.TryParse(user_input, out _))
@@ -1036,17 +943,17 @@ class Master
                 Console.WriteLine("Please input a whole number");
                 user_input = Console.ReadLine();
             }
-            new_project.video_fps = Math.Abs(int.Parse(user_input));
+            Project.Video_FPS = Math.Abs(int.Parse(user_input));
             Console.Clear();
 
             // Video rate control type
             // Use Menu() to grab user input
-            new_project.video_rate_control = Menu(new List<string> { "CRF", "CBR" },
+            Project.Video_Rate_Control = Menu(new List<string> { "CRF", "CBR" },
                                                   new List<string> { "What Video Rate Control to use?" });
 
             // Video rate control value (e.g. bitrate)
             // Let user input a valid value
-            Show_Top_Bar();
+            Display.Show_Top_Bar("Master");
             Console.WriteLine("Video Rate Control Value: (CRF - lower is better; CBR - higher is better)");
             user_input = Console.ReadLine();
             while (!int.TryParse(user_input, out _))
@@ -1054,12 +961,12 @@ class Master
                 Console.WriteLine("Please input a whole number");
                 user_input = Console.ReadLine();
             }
-            new_project.video_rate_control_value = Math.Abs(int.Parse(user_input));
+            Project.Video_Rate_Control_Value = Math.Abs(int.Parse(user_input));
             Console.Clear();
 
             // Resize the video
             // Use Menu() to grab user input
-            new_project.video_resize = Parse_Bool(Menu(new List<string> { "Yes", "No" },
+            Project.Video_Resize = Helpers.Parse_Bool(Menu(new List<string> { "Yes", "No" },
                                                        new List<string> { "Rescale the video?" }));
 
             if (new_project.video_resize)
@@ -1090,26 +997,41 @@ class Master
                 new_project.video_y = Math.Abs(int.Parse(user_input));
                 Console.Clear();
             }
+        }*/
+
+        // Blender version
+        // Use Menu() to grab user input
+        List<string> options = new List<string>();
+
+        foreach (Blender installation in Settings.Blender_Installations)
+        {
+            options.Add(installation.Version);
         }
 
-        // Get project directory name and create it
-        PROJECT_DIRECTORY = Path.Join(SCRIPT_DIRECTORY, new_project.id);
-        Directory.CreateDirectory(PROJECT_DIRECTORY);
+        menu = new Menu
+        (
+            options,
+            "Master",
+            new List<string> { "Please select your prefered Blender version" }
+        );
+        string selection = menu.Show();
+        Project.Blender_Version = (selection);
 
-        Show_Top_Bar();
-        Console.WriteLine("Gathering informations of your project. This usually only takes a few seconds. Please wait...");
+        // Get project directory name and create it
+        Project_Directory = Path.Join(Bin_Directory, Project.ID);
+        Directory.CreateDirectory(Project_Directory);
+
+        Display.Show_Top_Bar("Master");
+        Console.WriteLine("Gathering informations of your project. This may take a while. Please wait...");
 
         // Create a command for blender to optain some variables
-        string args = string.Format("-b \"{0}\" -P BPY.py -- {1} {2}",
-                             new_project.full_path_blend,
-                             Bool_To_Int(use_sfr),
-                             Bool_To_Int(test_render));
+        string args = $"-b \"{Project.Full_Path_Blend}\" -P BPY.py -- {Helpers.Bool_To_Int(Project.Use_SFR)} {Helpers.Bool_To_Int(Project.Render_Test_Frame)}";
 
         // Use Blender to obtain informations about the project
         // additionally use SFR if selected
         Process process = new Process();
         // Set Blender as executable
-        process.StartInfo.FileName = SETTINGS.blender_executable;
+        process.StartInfo.FileName = Settings.Blender_Installations.FirstOrDefault(blender => blender.Version == Project.Blender_Version).Executable;
         // Use the command string as args
         process.StartInfo.Arguments = args;
         process.StartInfo.CreateNoWindow = true;
@@ -1125,507 +1047,90 @@ class Master
         }
 
         // Read the output
-        string json_string = File.ReadAllText(Path.Join(Path.GetDirectoryName(new_project.full_path_blend), "vars.json"));
-        Project_Data project_data = JsonSerializer.Deserialize<Project_Data>(json_string);
-
-        File.Delete(Path.Join(Path.GetDirectoryName(new_project.full_path_blend), "vars.json"));
+        string json_string = File.ReadAllText(Path.Join(Path.GetDirectoryName(Project.Full_Path_Blend), "vars.json"));
+        ProjectInfo project_info = JsonSerializer.Deserialize<ProjectInfo>(json_string);
+        File.Delete(Path.Join(Path.GetDirectoryName(Project.Full_Path_Blend), "vars.json"));
 
         // Apply the values to project object
-        new_project.blender_version = project_data.blender_version;
-        new_project.render_engine = project_data.render_engine;
-        new_project.time_per_frame = project_data.render_time;
-        new_project.output_file_format = project_data.file_format;
-        new_project.first_frame = project_data.first_frame;
-        new_project.last_frame = project_data.last_frame;
-        new_project.frame_step = project_data.frame_step;
-        new_project.frames_total = 0;
+        Project.Render_Engine = project_info.Render_Engine;
+        Project.Time_Per_Frame = project_info.Render_Time;
+        Project.Output_File_Format = project_info.File_Format;
+        Project.First_Frame = project_info.First_Frame;
+        Project.Last_Frame = project_info.Last_Frame;
+        Project.Frame_Step = project_info.Frame_Step;
 
-        // Append every frame to frames_left
-        for (int frame = new_project.first_frame; frame <= new_project.last_frame; frame += new_project.frame_step)
+        lock (Project_DB_Lock)
         {
-            frames_left.Add(frame);
-            new_project.frames_total++;
-        }
+            DBHandler.Initialize_Project_Table(Project.ID);
 
-        // If the file exsists add it to list
-        string file = "frame_" + new_project.first_frame.ToString().PadLeft(6, '0') + "." + new_project.output_file_format;
-        if (File.Exists(Path.Join(Path.GetDirectoryName(new_project.full_path_blend), file)))
-        {
-            File.Move(Path.Join(Path.GetDirectoryName(new_project.full_path_blend), file), Path.Join(PROJECT_DIRECTORY, file));
-            frames_left.Remove(new_project.first_frame);
-            new_project.frames_complete.Add(new_project.first_frame);
+            // Append every frame to frames_left
+            Project.Frames_Total = DBHandler.Insert_Frames_Table(Project.First_Frame, Project.Last_Frame, Project.Frame_Step);
+
+            // If the file exsists add it to list
+            string file = $"frame_{Project.First_Frame.ToString().PadLeft(6, '0')}.{Project.Output_File_Format}";
+            string path = Path.Join(Path.GetDirectoryName(Project.Full_Path_Blend), file);
+            if (File.Exists(path))
+            {
+                File.Move(path, Path.Join(Project_Directory, file));
+
+                DBHandler.Update_Frames_Table(new List<Frame>
+                {
+                    new Frame
+                    {
+                        Id = Project.First_Frame,
+                        State = "Rendered"
+                    }
+                });
+            }
+
+            #region Prepare project on remote directory
+            // Make sure we do have a connection string
+            if (string.IsNullOrWhiteSpace(Settings.SMB_Connection.URL))
+            {
+                Project.File_transfer_Mode = FileTransferMode.TCP;
+            }
+            else if (string.IsNullOrWhiteSpace(Settings.FTP_Connection.URL))
+            {
+                Project.File_transfer_Mode = FileTransferMode.TCP;
+            }
+
+            if (Project.File_transfer_Mode == FileTransferMode.SMB)
+            {
+                try
+                {
+                    File.Copy(Project.Full_Path_Blend,
+                              Path.Join(Settings.SMB_Connection.Connection_String, Project.Full_Path_Blend));
+                }
+                catch (Exception ex)
+                {
+                    Project.File_transfer_Mode = FileTransferMode.TCP;
+                }
+            }
+            else if (Project.File_transfer_Mode == FileTransferMode.FTP)
+            {
+                try
+                {
+                    Web_Client = new WebClient();
+                    //Web_Client.Credentials = new NetworkCredential(Settings.FTP_Connection.User, Settings.FTP_Connection.Password);
+                    Web_Client.UploadFile(Path.Join(Settings.FTP_Connection.Connection_String, Project.Full_Path_Blend),
+                                          WebRequestMethods.Ftp.UploadFile,
+                                          Project.Full_Path_Blend);
+                }
+                catch (Exception ex)
+                {
+                    Project.File_transfer_Mode = FileTransferMode.TCP;
+                }
+            }
+            #endregion
         }
 
         // Save the project
-        Save_Project(new_project);
+        ProjectFileHandler.Save_Project(Project, Path.Join(Project_Directory, $"{Project.ID}.prfp"));
 
         // Start rendering
         Render_Project();
     }
 
-    // Save the project
-    public static void Save_Project(Project new_project)
-    {
-        // Update the global object
-        PROJECT = new_project;
-
-        // Convert object to json
-        var options = new JsonSerializerOptions { WriteIndented = true };
-        string jsonString = JsonSerializer.Serialize(PROJECT, options);
-
-        // Write to file
-        File.WriteAllText(Path.Combine(PROJECT_DIRECTORY, PROJECT.id + PROJECT_EXTENSION), jsonString);
-    }
-    // Save the current PROJECT
-    public static void Save_Project()
-    {
-        // Convert object to json
-        var options = new JsonSerializerOptions { WriteIndented = true };
-        string jsonString = JsonSerializer.Serialize(PROJECT, options);
-
-        // Write to file
-        File.WriteAllText(Path.Combine(PROJECT_DIRECTORY, PROJECT.id + PROJECT_EXTENSION), jsonString);
-    }
-
-    // Load a project
-    public static void Load_Project(string project_file)
-    {
-        // Prevent file read errors
-        if (!File.Exists(project_file))
-        {
-            Project_Setup();
-        }
-
-        // Read json from file
-        // Convert json to object
-        // Update global project object
-        // Update global project directory
-        string json_string = File.ReadAllText(project_file);
-        PROJECT = JsonSerializer.Deserialize<Project>(json_string);
-        PROJECT_DIRECTORY = Path.Join(SCRIPT_DIRECTORY, PROJECT.id);
-
-        // Add all frames left to render
-        frames_left = new List<int>();
-        for (int frame = PROJECT.first_frame; frame <= PROJECT.last_frame; frame += PROJECT.frame_step)
-        {
-            if (!PROJECT.frames_complete.Contains(frame))
-            {
-                frames_left.Add(frame);
-            }
-        }
-
-        Render_Project();
-    }
-    // Load a project from a given json string
-    public static void Load_Project_From_String(string json_string)
-    {
-        try
-        {
-            // Convert json to object
-            // Update global project object
-            // Update global project directory
-            PROJECT = JsonSerializer.Deserialize<Project>(json_string);
-            // +1 on data file
-            Save_Data();
-            // Generate ID based on project number
-            PROJECT.id = PRF_DATA.projects.ToString();
-            // Use ID to create a directory for the preoject
-            PROJECT_DIRECTORY = Path.Join(SCRIPT_DIRECTORY, PROJECT.id);
-            Directory.CreateDirectory(PROJECT_DIRECTORY);
-
-            // When passing from SFR we won't have frames rendered
-            PROJECT.frames_complete = new List<int>();
-
-            // Add all frames left to render
-            frames_left = new List<int>();
-            for (int frame = PROJECT.first_frame; frame <= PROJECT.last_frame; frame += PROJECT.frame_step)
-            {
-                frames_left.Add(frame);
-            }
-
-            // If the file exsists add it to list
-            string file = "frame_" + PROJECT.first_frame.ToString().PadLeft(6, '0') + "." + PROJECT.output_file_format;
-            if (File.Exists(Path.Join(SCRIPT_DIRECTORY, file)))
-            {
-                File.Move(Path.Join(SCRIPT_DIRECTORY, file), Path.Join(PROJECT_DIRECTORY, file));
-
-                frames_left.Remove(PROJECT.first_frame);
-                Add_Frames_Done(new List<int>{ PROJECT.first_frame });
-            }
-
-            // Save the project
-            Save_Project();
-
-            use_srf = false;
-
-            Render_Project();
-        }
-        catch (Exception e)
-        {
-            // Log errors
-            Console.WriteLine(e.ToString());
-            Write_Log(e.ToString());
-        }
-    }
-    #endregion
-
-    #region Data Handeling
-    // Write text to log file
-    public static void Write_Log(string content)
-    {
-        // Only log stuff if the users allows it
-        if (SETTINGS.enable_logging)
-        {
-            // Make sure file exsists
-            if (!File.Exists(LOGS_FILE))
-            {
-                File.Create(LOGS_FILE).Close();
-            }
-
-            // Append line break
-            content += Environment.NewLine;
-
-            // Append new line to file
-            File.AppendAllText(LOGS_FILE, content);
-        }
-    }
-
-    // Collect system data
-    public static void Collect_Data()
-    {
-        if (!File.Exists(DATA_FILE))
-        {
-            // Create empty PRF_Data object
-            PRF_Data new_data = new PRF_Data();
-
-            // ONLY proceed if the user agrees
-            if (SETTINGS.collect_data)
-            {
-                // Gather informations and add to data object
-                new_data.os = System.Runtime.InteropServices.RuntimeInformation.OSDescription;
-            }
-
-            // Save the obtained data
-            Save_Data(new_data);
-        }
-
-        else
-        {
-            Load_Data();
-        }
-    }
-
-    // Save data object
-    public static void Save_Data(PRF_Data new_data)
-    {
-        // Update global PRF_DATA object
-        PRF_DATA = new_data;
-
-        // Convert object to json
-        var options = new JsonSerializerOptions { WriteIndented = true };
-        string json_string = JsonSerializer.Serialize(PRF_DATA, options);
-
-        // Write json to file
-        File.WriteAllText(DATA_FILE, json_string);
-    }
-
-    // Add 1 to projects variable
-    public static void Save_Data()
-    {
-        // +1 here
-        PRF_DATA.projects = PRF_DATA.projects + 1;
-
-        // Convert object to json
-        var options = new JsonSerializerOptions { WriteIndented = true };
-        string json_string = JsonSerializer.Serialize(PRF_DATA, options);
-
-        // Write json to file
-        File.WriteAllText(DATA_FILE, json_string);
-    }
-
-    // Load PRF_DATA
-    public static void Load_Data()
-    {
-        // Prevent read errors
-        if (!File.Exists(DATA_FILE))
-        {
-            Collect_Data();
-            return;
-        }
-
-        // Read json from file
-        // Convert json to object
-        // Update global PRF_DATA object
-        string json_string = File.ReadAllText(DATA_FILE);
-        PRF_DATA = JsonSerializer.Deserialize<PRF_Data>(json_string);
-    }
-    #endregion
-
-    #region Helpers
-    // Check if string is a valid port
-    public static bool Is_Port(string port)
-    {
-        // Check if string is number
-        if (!int.TryParse(port, out _))
-        {
-            return false;
-        }
-
-        // Check if number is between 1 and 65535
-        return (Math.Abs(int.Parse(port)) >= 1 && Math.Abs(int.Parse(port)) <= 65535);
-    }
-
-    // Convert string to bool, accepts default
-    public static dynamic Parse_Bool(string value, bool def = true)
-    {
-        // If it is a human yes, return computer true
-        if (new List<string>() { "true", "yes", "y", "1" }.Any(s => s.Contains(value.ToLower())))
-        {
-            return true;
-        }
-
-        // If it is a human no, return computer false
-        else if (new List<string>() { "false", "no", "n", "0" }.Any(s => s.Contains(value.ToLower())))
-        {
-            return false;
-        }
-
-        // If human is not sure, return default value
-        else if (new List<string>() { "", null }.Any(s => s.Contains(value.ToLower())))
-        {
-            return def;
-        }
-
-        // if none applies, return error
-        return null;
-    }
-
-    public static IPAddress Get_IPv4()
-    {
-        // Obtain the ip adresses of the current machine
-        IPHostEntry host = Dns.GetHostEntry(Dns.GetHostName());
-
-        // Check each adress -> find out if it's local IPv4
-        foreach (IPAddress ip in host.AddressList)
-        {
-            if (ip.AddressFamily == AddressFamily.InterNetwork)
-            {
-                return ip;
-            }
-        }
-
-        // If not connected only use local IP
-        return IPAddress.Parse("127.0.0.1");
-    }
-
-    public static int Bool_To_Int(bool input)
-    {
-        if (input)
-        {
-            return 1;
-        }
-
-        return 0;
-    }
+    
     #endregion
 }
-
-public class SRF
-{
-    public Socket srf_client;
-
-    public SRF(Socket client)
-    {
-        srf_client = client;
-    }
-
-    public void Send_Update(int frame, string state)
-    {
-        // Convert the object to string
-        string json_send = frame.ToString() + "|" + state;
-        // Convert string to bytes
-        byte[] bytes_send = Encoding.UTF8.GetBytes(json_send);
-        // Send bytes to client
-        srf_client.Send(bytes_send);
-
-        // Receive message from client
-        byte[] buffer = new byte[64];
-        srf_client.Receive(buffer);
-    }
-
-    public void Finish()
-    {
-        srf_client.Shutdown(SocketShutdown.Both);
-        srf_client.Close();
-    }
-}
-
-public class Progress_Bar
-{
-    public int progress;
-    public int goal;
-
-    public string i;
-    public char b;
-    public char p_c;
-    public char l_c;
-
-    public Progress_Bar(int part, int max, string info = "", char border = '|', char progress_char = '#', char left_char = ' ')
-    {
-        progress = part;
-        goal = max;
-        i = info;
-        b = border;
-        p_c = progress_char;
-        l_c = left_char;
-    }
-
-    public string Get_Progress_Bar()
-    {
-        float percent = (progress / 1.0f) / (goal / 1.0f) * 100;
-        int percent_rounded = (int)Math.Round(percent);
-        int bar_max = Console.WindowWidth - 6 - i.Length;
-        int bar_factor = (int)Math.Floor(bar_max / 1.0f / goal);
-
-        //100%|########|
-        // 50%|####    |
-        //  0%|        |
-
-        string bar = i;
-        bar += percent_rounded.ToString().PadLeft(3, ' ') + "%";
-        bar += b;
-        bar += string.Concat(Enumerable.Repeat(p_c, progress * bar_factor));
-        bar += "".PadRight((goal - progress) * bar_factor, l_c);
-        bar += b;
-
-        return bar;
-    }
-
-    public string Update_Progress_Bar(int step)
-    {
-        progress += step;
-        float percent = (progress / 1.0f) / (goal / 1.0f) * 100;
-        int percent_rounded = (int)Math.Round(percent);
-        int bar_max = Console.WindowWidth - 6 - i.Length;
-        int bar_factor = (int)Math.Floor(bar_max / 1.0f / goal);
-
-        //100%|########|
-        // 50%|####    |
-        //  0%|        |
-
-        string bar = i;
-        bar += percent_rounded.ToString().PadLeft(3, ' ') + "%";
-        bar += b;
-        bar += string.Concat(Enumerable.Repeat(p_c, progress * bar_factor));
-        bar += "".PadRight((goal - progress) * bar_factor, l_c);
-        bar += b;
-
-        return bar;
-    }
-}
-
-#region Objects
-// Settings object class
-public class Settings
-{
-    public string version { get; set; } = "0.0.0";
-    public int port { get; set; } = 8080;
-    public string blender_executable { get; set; }
-    public string ffmpeg_executable { get; set; }
-    public bool keep_output { get; set; }
-    public bool use_ftp { get; set; }
-    public bool collect_data { get; set; }
-    public bool enable_logging { get; set; }
-}
-
-// Project object class
-public class Project
-{
-    public string id { get; set; }
-    public string blender_version { get; set; }
-    public string full_path_blend { get; set; }
-    public bool use_sid_temporal { get; set; } = false;
-    public string render_engine { get; set; }
-    public string output_file_format { get; set; }
-    public bool video_generate { get; set; }
-    public int video_fps { get; set; }
-    public string video_rate_control { get; set; } // CBR, CRF
-    public int video_rate_control_value { get; set; }
-    public bool video_resize { get; set; }
-    public int video_x { get; set; }
-    public int video_y { get; set; }
-    public int batch_size { get; set; } = 0;
-    public float time_per_frame { get; set; }
-    public int ram_use { get; set; } = 0;
-    public int first_frame { get; set; }
-    public int last_frame { get; set; }
-    public int frame_step { get; set; } = 1;
-    public int frames_total { get; set; }
-    public List<int> frames_complete { get; set; } = new List<int>();
-}
-
-// Communication from Client
-public class Client_Response
-{
-    public string message { get; set; }
-    public string blender_version { get; set; }
-    public List<string> allowed_engines { get; set; }
-    public int limit_ram_use { get; set; }
-    public float limit_file_size { get; set; }
-    public float limit_time_frame { get; set; }
-    public List<bool> faulty { get; set; }
-    public List<int> frames { get; set; }
-    public List<string> files { get; set; }
-}
-
-// Communication to Client
-public class Master_Response
-{
-    public string message { get; set; }
-    public bool use_ftp { get; set; } = false;
-    public bool use_sid_temporal { get; set; } = false;
-    public string id { get; set; }
-    public float file_size { get; set; }
-    public string render_engine { get; set; }
-    public string file_format { get; set; }
-    public int first_frame { get; set; }
-    public int last_frame { get; set; }
-    public int frame_step { get; set; } = 1;
-
-}
-
-// Project_Data object class
-public class Project_Data
-{
-    public string blender_version { get; set; }
-    public string render_engine { get; set; }
-    public float render_time { get; set; } = 0.0f;
-    public int ram_use { get; set; } = 0;
-    public string file_format { get; set; }
-    public int first_frame { get; set; }
-    public int last_frame { get; set; }
-    public int frame_step { get; set; }
-}
-
-// PRF_Data object class
-public class PRF_Data
-{
-    public string os { get; set; } = "No data";
-    public List<string> cpus { get; set; } = new List<string> { "No data" };
-    public List<string> gpus { get; set; } = new List<string> { "No data" };
-    public int ram { get; set; } = 0;
-    public int projects { get; set; } = 0;
-}
-
-// Menu_Item object class
-public class Menu_Item
-{
-    public string text { get; set; }
-    public bool selected { get; set; } = false;
-
-    public Menu_Item(string item_text = "")
-    {
-        text = item_text;
-    }
-}
-#endregion

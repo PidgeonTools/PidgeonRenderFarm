@@ -24,12 +24,12 @@ Pidgeon Render Farm is an innovative, **peer-to-peer** render farm software that
 - **Compatibility**: The software supports many operating systems, including modern Windows (7 and above), Linux, and MacOS.
 
 ## What are the system requirements?
-- **RAM**: <50 MB + RAM for Blender
-- **Storage**: ~200 kb (for Client and Master each) + storage for projects
-- **Network**: No internet connection required, just a local network
+- **RAM**:	<50 MB RAM + RAM for Blender
+- **Storage**: ~60 MB (for Client and Master each) + storage for projects
+- **Network**: **No internet** connection required, just a local network
 
 ### Operating System
-Modern **Windows** (7 and above) and **Linux** are actively supported. MacOS binaries are not aviable, as we want to ensure that you receive a tested product. You can still obtain the binaries by asking on [our Discord server](https://discord.gg/cnFdGQP)
+Modern **Windows** (10 and above) and **Linux** are actively supported. MacOS binaries are not aviable, as we want to ensure that you receive a tested product. You can still obtain the binaries by asking on [our Discord server](https://discord.gg/cnFdGQP)
 
 ## How can I help the development?
 You can [donate on PayPal](https://www.paypal.me/kevinlorengel), [buy Pidgeon Render Farm on Gumroad](https://pidgeontools.gumroad.com/l/PidgeonRenderFarm) and you can help by testing Pidgeon Render Farm and filling out [this form](https://app.formbricks.com/s/cljn7iccc0023qs0h9sxtjpc4), creating an [issue on GitHub](https://github.com/PidgeonTools/PidgeonRenderFarm/issues/new/choose) or by contacting us on [Discord](https://discord.gg/cnFdGQP)!
@@ -46,7 +46,7 @@ CRF stands for Constant Quality, which may result in an unpredictable file size.
 ## What does the Batch (formerly Chunks) feature do/How does it work?
 The chunks feature allows the Client to render multiple frames at once. Instead of rendering only one frame and then reporting to the master, the Client will render a set of frames (the chunk) and after all frames are done it will report back and provide the master with the results. It's recommended to use this feature.
 
-## Why would I add multiple Masters in the Client? - Not available yet
+## Why would I add multiple Masters in the Client?
 In case the connection to the main Master fails (because it is offline or you are uploading projects from different machines), the Client will automatically use another connection of the ones you added. It's a nice-to-have feature, but if you don't need it, just add a single connection.
 
 ## What are the hardware requirements for the different render devices/APIs?
@@ -74,7 +74,7 @@ In case the connection to the main Master fails (because it is offline or you ar
 It is required in order to execute PRF, but the binaries include .NET, so you don't have to install it on your system seperately.
 
 ## Do you collect any data?
-**No!** Unless you decide to allow the collection of data in the setup process, but even then the data remains on your system. We **won't have any access to it**! We only have access to the data if you decide to send us your data, which has to be done manually. The data collected contains **anonymous informations** about your system. Full list of data collected: ``OS version``, ``CPU model``, ``GPU model``, ``RAM``
+**No!** Unless you decide to allow the collection of data in the setup process, but even then the data remains on your system. We **won't have any access to it**! We only have access to the data if you decide to send us your data, which has to be done manually. The data collected contains **anonymous informations** about your system. Full list of data collected: ``PRF version``, ``OS name (e.g. Windows, Fedora)``, ``OS version``, ``System architecture``, ``CPU cores``, ``GPU count``, ``RAM``
 
 ## Info
 Do you have questions or encounter any problems? [Contact us on Discord!](https://discord.gg/cnFdGQP)

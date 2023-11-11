@@ -14,19 +14,19 @@ print(argv)
 
 # Create new object containing Blender version, start frame, end frame, render engine, output file format and render time
 json_object = {
-    "blender_version": bpy.app.version_string,
-    "first_frame": bpy.context.scene.frame_start,
-    "last_frame": bpy.context.scene.frame_end,
-    "frame_step": bpy.context.scene.frame_step,
-    "render_engine": bpy.context.scene.render.engine,
-    "file_format": bpy.context.scene.render.image_settings.file_format,
-    "render_time": 0 # placeholder
+    "Blender_Version": bpy.app.version_string,
+    "First_Frame": bpy.context.scene.frame_start,
+    "Last_Frame": bpy.context.scene.frame_end,
+    "Frame_Step": bpy.context.scene.frame_step,
+    "Render_Engine": bpy.context.scene.render.engine,
+    "File_Format": bpy.context.scene.render.image_settings.file_format,
+    "Render_Time": 0 # placeholder
 }
 
 # Unsupported formats replaced by PNG
-if json_object["file_format"] in ["AVI_JPEG", "AVI_RAW", "FFMPEG"]:
-    json_object["file_format"] = "PNG"
-    bpy.context.scene.render.image_settings.file_format = json_object["file_format"]
+if json_object["File_Format"] in ["AVI_JPEG", "AVI_RAW", "FFMPEG"]:
+    json_object["File_Format"] = "PNG"
+    bpy.context.scene.render.image_settings.file_format = json_object["File_Format"]
 
 # If opimization with SuperFastRender wanted, do it with default settings
 if argv[0] == "1":
@@ -46,7 +46,7 @@ if argv[1] == "1":
     bpy.context.scene.render.filepath = path.join(path.dirname(bpy.data.filepath), name)
     bpy.ops.render.render(write_still=True)
     # Pray it is compatible with C# float...
-    json_object["render_time"] = time.time() - startTime
+    json_object["Render_Time"] = time.time() - startTime
 
 
 # Write object to .json
