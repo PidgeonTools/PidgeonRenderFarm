@@ -5,12 +5,17 @@ using System.Diagnostics;
 using System.Text.Json;
 using System.IO.Compression;
 
+using Libraries;
+using Libraries.Models;
+using Libraries.Models.Database;
+using Libraries.Enums;
+
 class Client
 {
     #region Global Variables
     // Initialize global variables
     // Initialize global File names, directories
-    public static string Bin_Directory = Path.GetDirectoryName(System.Reflection.Assembly.GetEntryAssembly().Location);
+    public static string Bin_Directory = AppDomain.CurrentDomain.BaseDirectory;
     public static string Database_Directory = "";
     public static string Project_Directory = "";
 
@@ -385,7 +390,7 @@ class Client
                                 else
                                 {
                                     // Generate the file name
-                                    file_name = "frame_" + frame_id.ToString().PadLeft(6, '0') + "." + master_response.File_Format;
+                                    file_name = "frame_" + frame_id.ToString().PadLeft(6, '0') + "." + master_response.File_Format.ToLower();
                                     // Get it's path
                                     path = Path.Join(Project_Directory, file_name);
                                     // Add file to list
@@ -517,7 +522,7 @@ class Client
     public void Render_SID_Temporal(string blend_file, int first_frame, int last_frame, string render_engine)
     {
         // Prepare Blender arguments
-        string args = $"-b \"{blend_file}\" -t {Settings.Blender_Installations[0].CPU_Thread_Limit} -P SID_Temporal_Bridge.py -- {first_frame} {last_frame}";
+        string args = $"-b \"{blend_file}\" -t {Settings.Blender_Installations[0].CPU_Thread_Limit} -P {Path.Join(Bin_Directory, "SID_Temporal_Bridge.py")} -- {first_frame} {last_frame}";
         // Add render device for Cycles
         if (render_engine == "CYCLES")
         {
@@ -551,7 +556,7 @@ class Client
         // Add render device for Cycles
         if (render_engine == "CYCLES")
         {
-            args += " --cycles-device ";
+            args += " -- --cycles-device ";
             args += Settings.Blender_Installations[0].Render_Device;
         }
 
@@ -752,7 +757,7 @@ class Client
         Console.WriteLine("Please wait while importing installed render engines from Blender...");
 
         // Prepare Blender arguments
-        string args = "-b -P Get_Engines.py";
+        string args = $"-b -P {Path.Join(Bin_Directory, "Get_Engines.py")}";
 
         // Use Blender to obtain the render engines and Blender version
         Process process = new Process();
@@ -771,7 +776,7 @@ class Client
 
         // Split the content of the file into a List
         List<string> engines = new List<string>();
-        List<string> lines = File.ReadLines(Path.Join(Bin_Directory, "engines.txt")).ToList();
+        List<string> lines = File.ReadLines(Path.Join(Path.GetDirectoryName(blender_executable), "engines.txt")).ToList();
         string version_string = lines[0];
         //string[] version_list = version_string.Split('.');
         //(int, int, int) version = (int.Parse(version_list[0]), int.Parse(version_list[1]), int.Parse(version_list[2]));

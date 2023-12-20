@@ -1,5 +1,9 @@
 ﻿using System.Runtime.InteropServices;
 
+using Libraries.Enums;
+
+namespace Libraries.Models;
+
 public class MasterConnection
 {
     public string IPv4 { get; set; }
@@ -74,19 +78,13 @@ public class DBConnection
     public string? User { get; set; }
     public string? Password { get; set; }
     public string Path { get; set; }
-    public int Mode { get; set; }
+    public DBMode Mode { get; set; }
 
-    public DBConnection(int mode, string path, string? user = null, string? password = null)
+    public DBConnection(DBMode mode, string path, string? user = null, string? password = null)
     {
         Path = path;
         User = user;
         Password = password;
         Mode = mode;
     }
-}
-public static class DBMode
-{
-    public static readonly int SQLite = 0;
-    public static readonly int MSSQL = 1;
-    public static readonly int MYSQL = 2;
 }

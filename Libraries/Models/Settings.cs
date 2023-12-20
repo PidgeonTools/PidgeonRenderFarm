@@ -1,4 +1,6 @@
-﻿public class Settings
+﻿namespace Libraries.Models;
+
+public class Settings
 {
     public List<Blender> Blender_Installations { get; set; }
     public bool Allow_Data_Collection { get; set; }

@@ -1,4 +1,8 @@
-﻿public class ClientResponse
+﻿using Libraries.Models.Database;
+
+namespace Libraries.Models;
+
+public class ClientResponse
 {
     public string Message { get; set; }
     public List<Blender> Blender_Installations { get; set; }

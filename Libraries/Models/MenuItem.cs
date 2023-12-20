@@ -1,4 +1,6 @@
-﻿public class MenuItem
+﻿namespace Libraries.Models;
+
+public class MenuItem
 {
     public string text { get; set; }
     public bool selected { get; set; } = false;

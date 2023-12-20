@@ -1,4 +1,6 @@
-﻿public class SystemInfo
+﻿namespace Libraries.Models;
+
+public class SystemInfo
 {
     public string PRF_Version { get; set; }
     public string OS_Description { get; set; }

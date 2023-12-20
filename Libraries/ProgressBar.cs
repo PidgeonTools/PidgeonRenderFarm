@@ -1,3 +1,5 @@
+namespace Libraries;
+
 public class ProgressBar
 {
     private float Start { get; set; }

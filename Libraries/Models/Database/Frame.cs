@@ -1,4 +1,6 @@
-﻿public class Frame
+﻿namespace Libraries.Models.Database;
+
+public class Frame
 {
     public int Id {  get; set; }
     public string? File_Name { get; set; }

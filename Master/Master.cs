@@ -1,20 +1,22 @@
-﻿using System;
-using System.Diagnostics;
-using System.IO;
+﻿using System.Diagnostics;
 using System.IO.Compression;
 using System.Net;
-using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+
+using Libraries;
+using Libraries.Models;
+using Libraries.Models.Database;
+using Libraries.Enums;
+using System.Runtime.InteropServices;
 
 class Master
 {
     #region Global Variables
     // Initialize global variables
     // Initialize global File names, directories
-    public static string Bin_Directory = Path.GetDirectoryName(System.Reflection.Assembly.GetEntryAssembly().Location);
-    public static string Database_Directory = "";
+    public static string Bin_Directory = AppDomain.CurrentDomain.BaseDirectory;
     public static string Project_Directory = "";
 
     // Create global objects and variables
@@ -28,6 +30,8 @@ class Master
     public static WebClient Web_Client;
 
     private static SettingsFileHandler Settings_File_Handler;
+
+    private static bool Using_SRF = false;
     #endregion
 
     // Runs at start
@@ -38,56 +42,69 @@ class Master
     }
     public void Start(string[] args)
     {
+        // Console.WriteLine(Bin_Directory);
+        // Console.ReadKey();
         // Get log directory name and create it
-        Database_Directory = Path.Join(Bin_Directory, "Database");
-        if (!Directory.Exists(Database_Directory))
-        {
-            Directory.CreateDirectory(Database_Directory);
-        }
-
-        // Get the name for the current log, settings and data
-        //DATA_FILE = Path.Join(Bin_Directory, "master_data.json");
-
         Settings_File_Handler = new SettingsFileHandler(Path.Join(Bin_Directory, "master_settings.json"));
+
         try
         {
-            Settings = Settings_File_Handler.Load_Master_Settings();
+            Settings = Settings_File_Handler.Load_Master_Settings(Path.Join(Bin_Directory, "master_settings_override.json"));
+            if (string.IsNullOrWhiteSpace(Settings.Database_Connection.Path))
+            {
+                Settings.Database_Connection.Path = Path.Join(Bin_Directory, "Database");
+            }
+            File.Delete(Path.Join(Bin_Directory, "master_settings_override.json"));
         }
-        catch (FileNotFoundException)
+        catch (Exception ex)
         {
-            // Run setup
-            First_Time_Setup();
-        }
-        catch (FileLoadException)
-        {
-            // Run setup
-            First_Time_Setup();
+            try
+            {
+                Settings = Settings_File_Handler.Load_Master_Settings();
+            }
+            catch (FileNotFoundException)
+            {
+                // Run setup
+                First_Time_Setup();
+            }
+            catch (FileLoadException)
+            {
+                // Run setup
+                First_Time_Setup();
+            }
         }
 
         // Initialize static classes
         ProjectFileHandler.Bin_Directory = Bin_Directory;
-        DBHandler.Initialize(Settings.Database_Connection);
         Logger.Enable_Logging = Settings.Enable_Logging;
+
+        if (!Directory.Exists(Settings.Database_Connection.Path))
+        {
+            Directory.CreateDirectory(Settings.Database_Connection.Path);
+        }
+        DBHandler.Initialize(Settings.Database_Connection);
 
         new SystemInfo(Settings.Allow_Data_Collection, Bin_Directory);
 
-        // If provided with arguments -> load them as project
-        if (args.Length != 0)
+        try
         {
-            try
-            {
-                Logger.Log(this, args.ToString());
-                ProjectFileHandler.Load_Project_From_String(args[0]);
-            }
-            catch (Exception e)
-            {
-                // Log errors
-                Logger.Log(this, e.ToString(), "Error");
-            }
+            (Project, Project_Directory) = ProjectFileHandler.Load_Project(Path.Join(Bin_Directory, "startup_project.prfp"));
+            Using_SRF = true;
+            File.Delete(Path.Join(Bin_Directory, "startup_project.prfp"));
+            Directory.CreateDirectory(Project_Directory);
+            Initialize_Project();
+            Render_Project();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex);
         }
 
-        // If it fails, just continue to the main menu
-        Main_Menu();
+        if (!Using_SRF)
+        {
+            // If it fails, just continue to the main menu
+            Main_Menu();
+        }
     }
     
     void Main_Menu()
@@ -239,13 +256,13 @@ class Master
                     }
                     else
                     {
-                        Logger.Log(this, $"Refused Client. Reason: too many Clients", "Warning");
+                        Logger.Log(this, $"Refused Client. Reason: too many Clients", LogLevel.Warn);
                         Thread.Sleep(1000);
                     }
                 }
                 catch (Exception ex)
                 {
-                    Logger.Log(this, ex.ToString(), "Error");
+                    Logger.Log(this, ex.ToString(), LogLevel.Error);
                 }
             }
             listener.Stop();
@@ -253,7 +270,7 @@ class Master
         catch (Exception ex)
         {
             // Log errors
-            Logger.Log(this, ex.ToString(), "Error");
+            Logger.Log(this, ex.ToString(), LogLevel.Error);
         }
 
         Logger.Log(this, $"Rendering finished! After {DateTime.Now - start_time}");
@@ -261,7 +278,7 @@ class Master
         if (Project.Use_SID_Temporal)
         {
             // Prepare Blender arguments
-            string args = $"-b \"{Project.Full_Path_Blend}\" -P SID_Temporal_Bridge.py";
+            string args = $"-b \"{Project.Full_Path_Blend}\" -P {Path.Join(Bin_Directory, "SID_Temporal_Bridge.py")}";
 
             // Use Blender to render project
             Process process = new Process();
@@ -286,8 +303,15 @@ class Master
             Logger.Log(this, $"Denoising finished! After {DateTime.Now - start_time}");
         }
 
-        Console.WriteLine("You can go back to the main menu by pressing any key");
-        Console.ReadKey();
+        if (!Using_SRF)
+        {
+            Console.WriteLine("You can go back to the main menu by pressing any key");
+            Console.ReadKey();
+        }
+        else
+        {
+            Environment.Exit(0);
+        }
     }
 
     void Client_Handler(Socket client)
@@ -453,7 +477,7 @@ class Master
                         }
                         catch (Exception ex)
                         {
-                            Logger.Log(this, $"File does not exist on remote directory. Exception: {ex}", "Error");
+                            Logger.Log(this, $"File does not exist on remote directory. Exception: {ex}", LogLevel.Error);
                         }
                     }
                 
@@ -484,7 +508,7 @@ class Master
 
         catch (Exception ex)
         {
-            Logger.Log(this, ex.ToString(), "Error");
+            Logger.Log(this, ex.ToString(), LogLevel.Error);
         }
     }
 
@@ -719,7 +743,7 @@ class Master
         List<string> basic_bool = new List<string> { "No", "Yes" };
         string user_input = "";
 
-        Settings.Database_Connection = new DBConnection(DBMode.SQLite, Database_Directory);
+        Settings.Database_Connection = new DBConnection(DBMode.SQLite, Path.Join(Bin_Directory, "Database"));
         Settings.SMB_Connection = new SMBConnection("", "", "");
         Settings.FTP_Connection = new FTPConnection("", "", "");
 
@@ -772,7 +796,7 @@ class Master
             else if (File.Exists(user_input))
             {
                 // Prepare Blender arguments
-                string args = "-b -P Get_Version.py";
+                string args = $"-b -P {Path.Join(Bin_Directory, "Get_Version.py")}";
 
                 // Use Blender to obtain the render engines and Blender version
                 Process process = new Process();
@@ -791,7 +815,7 @@ class Master
 
                 // Split the content of the file into a List
                 List<string> engines = new List<string>();
-                List<string> lines = File.ReadLines(Path.Join(Bin_Directory, "version.txt")).ToList();
+                List<string> lines = File.ReadLines(Path.Join(Path.GetDirectoryName(user_input), "version.txt")).ToList();
                 string version_string = lines[0];
 
                 Settings.Blender_Installations.Add(new Blender
@@ -1025,7 +1049,7 @@ class Master
         Console.WriteLine("Gathering informations of your project. This may take a while. Please wait...");
 
         // Create a command for blender to optain some variables
-        string args = $"-b \"{Project.Full_Path_Blend}\" -P BPY.py -- {Helpers.Bool_To_Int(Project.Use_SFR)} {Helpers.Bool_To_Int(Project.Render_Test_Frame)}";
+        string args = $"-b \"{Project.Full_Path_Blend}\" -P {Path.Join(Bin_Directory, "BPY.py")} -- {Helpers.Bool_To_Int(Project.Use_SFR)} {Helpers.Bool_To_Int(Project.Render_Test_Frame)}";
 
         // Use Blender to obtain informations about the project
         // additionally use SFR if selected
@@ -1059,6 +1083,17 @@ class Master
         Project.Last_Frame = project_info.Last_Frame;
         Project.Frame_Step = project_info.Frame_Step;
 
+        Initialize_Project();
+
+        // Save the project
+        ProjectFileHandler.Save_Project(Project, Path.Join(Project_Directory, $"{Project.ID}.prfp"));
+
+        // Start rendering
+        Render_Project();
+    }
+
+    public static void Initialize_Project()
+    {
         lock (Project_DB_Lock)
         {
             DBHandler.Initialize_Project_Table(Project.ID);
@@ -1085,11 +1120,11 @@ class Master
 
             #region Prepare project on remote directory
             // Make sure we do have a connection string
-            if (string.IsNullOrWhiteSpace(Settings.SMB_Connection.URL))
+            if (string.IsNullOrWhiteSpace(Settings.SMB_Connection?.URL))
             {
                 Project.File_transfer_Mode = FileTransferMode.TCP;
             }
-            else if (string.IsNullOrWhiteSpace(Settings.FTP_Connection.URL))
+            else if (string.IsNullOrWhiteSpace(Settings.FTP_Connection?.URL))
             {
                 Project.File_transfer_Mode = FileTransferMode.TCP;
             }
@@ -1123,14 +1158,6 @@ class Master
             }
             #endregion
         }
-
-        // Save the project
-        ProjectFileHandler.Save_Project(Project, Path.Join(Project_Directory, $"{Project.ID}.prfp"));
-
-        // Start rendering
-        Render_Project();
     }
-
-    
     #endregion
 }

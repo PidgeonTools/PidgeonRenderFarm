@@ -14,15 +14,11 @@
 	</ItemGroup>
 
 	<ItemGroup>
-	  <None Include="..\.editorconfig" Link=".editorconfig" />
-	</ItemGroup>
-
-	<ItemGroup>
-		<ProjectReference Include="..\Libaries\Libaries.csproj" />
+		<ProjectReference Include="../Libraries/Libraries.csproj" />
 	</ItemGroup>
 
 	<Target Name="PostBuild" AfterTargets="PostBuildEvent">
-	  <Exec Command="copy $(ProjectDir)SID_Temporal_Bridge.py $(ProjectDir)$(OutDir)&#xD;&#xA;copy $(ProjectDir)Get_version.py $(ProjectDir)$(OutDir)&#xD;&#xA;copy $(ProjectDir)BPY.py $(ProjectDir)$(OutDir)" />
+	  <Exec Command="cp $(ProjectDir)SID_Temporal_Bridge.py $(ProjectDir)$(OutDir)&#xD;&#xA;cp $(ProjectDir)Get_Version.py $(ProjectDir)$(OutDir)&#xD;&#xA;cp $(ProjectDir)BPY.py $(ProjectDir)$(OutDir)" />
 	</Target>
 
 </Project>

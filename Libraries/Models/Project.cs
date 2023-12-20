@@ -1,5 +1,7 @@
 ﻿using System.Numerics;
 
+namespace Libraries.Models;
+
 public class ProjectInfo
 {
     public string Render_Engine { get; set; }
