@@ -14,7 +14,7 @@ public class SystemInfo
     {
         if (allow_collection)
         {
-            PRF_Version = "1.0.0-beta";
+            PRF_Version = "0.2.0";
             OS_Description = DataCollector.Get_OS_Description();
             OS_Version = DataCollector.Get_OS_Version();
             OS_Architecture = DataCollector.Get_OS_Architecture();

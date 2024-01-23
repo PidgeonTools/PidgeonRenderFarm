@@ -1,10 +1,8 @@
 # ❓Frequently Asked Questions
-# Welcome to the FAQ! Here we will answer the most common questions.
-
 ## Where can I download Pidgeon Render Farm?
 **Gumroad**: https://pidgeontools.gumroad.com/l/PidgeonRenderFarm
 
-**GitHub**: https://github.com/PidgeonTools/PidgeonRenderFarm
+**GitHub**: https://github.com/PidgeonTools/PidgeonRenderFarm/releases/latest
 
 ## Where can I track the development progress?
 https://github.com/orgs/PidgeonTools/projects/5
@@ -21,7 +19,7 @@ Pidgeon Render Farm is an innovative, **peer-to-peer** render farm software that
 - **Integration**: It integrates seamlessly with other addons by PidgeonTools, enhancing its functionality.
 - **Security**: The peer-to-peer nature of the software ensures your data stays secure and only on your devices.
 - **Support**: Free support is available to help you navigate any challenges.
-- **Compatibility**: The software supports many operating systems, including modern Windows (7 and above), Linux, and MacOS.
+- **Compatibility**: The software supports many operating systems, including modern Windows (10 and above), Linux, and MacOS.
 
 ## What are the system requirements?
 - **RAM**:	<50 MB RAM + RAM for Blender
@@ -70,7 +68,8 @@ In case the connection to the main Master fails (because it is offline or you ar
 - **OPENCL**: Blender 2.93 or older
 
 ### What is dotnet (.NET)?
-".NET is an open source developer platform, created by Microsoft, for building many different types of applications."
+> .NET is an open source developer platform, created by Microsoft, for building many different types of applications.
+
 It is required in order to execute PRF, but the binaries include .NET, so you don't have to install it on your system seperately.
 
 ## Do you collect any data?

@@ -61,6 +61,7 @@ class Client
             First_Time_Setup();
         }
 
+        Logger.Initialize(Settings.Enable_Logging, Settings.Log_level);
         DBHandler.Initialize(Settings.Database_Connection);
 
         new SystemInfo(Settings.Allow_Data_Collection, Bin_Directory);
@@ -318,6 +319,7 @@ class Client
                                 Render_SID_Temporal(blend_file,
                                                    master_response.Frames.First().Id,
                                                    master_response.Frames.Last().Id,
+                                                   master_response.Frame_Step,
                                                    master_response.Render_Engine);
                             }
                             else
@@ -329,13 +331,14 @@ class Client
                                        master_response.File_Format);
                             }
 
-                            Console.WriteLine($"Frame {master_response.Frames.First().Id} - {master_response.Frames.Last().Id} rendered!");
                             Logger.Log(this, $"Frame {master_response.Frames.First().Id} - {master_response.Frames.Last().Id} rendered!");
 
                             // Prepare new response
-                            client_response = new ClientResponse();
-                            client_response.Message = "output";
-                            client_response.Frames = new List<Frame>();
+                            client_response = new ClientResponse
+                            {
+                                Message = "output",
+                                Frames = new List<Frame>()
+                            };
 
                             // List for paths -> send files
                             List<string> paths = new List<string>();
@@ -479,7 +482,6 @@ class Client
                                     }
 
                                     log = string.Format("Frame {0} - {1} uploaded!", master_response.Frames.First().Id, master_response.Frames.Last().Id);
-                                    Console.WriteLine(log);
                                     Logger.Log(this, log);
                                 }
                             }
@@ -492,6 +494,27 @@ class Client
                             // Cut the connection
                             connection.Shutdown(SocketShutdown.Both);
                             connection.Close();
+
+                            if (!Settings.Keep_Input)
+                            {
+                                File.Delete(blend_file);
+                                Logger.Log(this, $"Deleted file {blend_file}");
+                            }
+
+                            if (!Settings.Keep_Output)
+                            {
+                                for (int i = 0; i < paths.Count; ++i)
+                                {
+                                    File.Delete(paths[i]);
+                                    Logger.Log(this, $"Deleted file {paths[i]}");
+                                }
+                            }
+
+                            if (!Settings.Keep_ZIP)
+                            {
+                                File.Delete(zip_file);
+                                Logger.Log(this, $"Deleted file {zip_file}");
+                            }
                         }
                         catch (SocketException ex)
                         {
@@ -519,14 +542,14 @@ class Client
         }
     }
 
-    public void Render_SID_Temporal(string blend_file, int first_frame, int last_frame, string render_engine)
+    public void Render_SID_Temporal(string blend_file, int first_frame, int last_frame, int frame_step, string render_engine)
     {
         // Prepare Blender arguments
-        string args = $"-b \"{blend_file}\" -t {Settings.Blender_Installations[0].CPU_Thread_Limit} -P {Path.Join(Bin_Directory, "SID_Temporal_Bridge.py")} -- {first_frame} {last_frame}";
+        string args = $"-b \"{blend_file}\" -t {Settings.Blender_Installations[0].CPU_Thread_Limit} -P {Path.Join(Bin_Directory, "SID_Temporal_Bridge.py")} -- {first_frame} {last_frame} {frame_step}";
         // Add render device for Cycles
         if (render_engine == "CYCLES")
         {
-            args += " --cycles-device ";
+            args += " -- --cycles-device ";
             args += Settings.Blender_Installations[0].Render_Device;
         }
 
@@ -568,15 +591,15 @@ class Client
         process.StartInfo.Arguments = args;
         process.StartInfo.CreateNoWindow = true;
         // Redirect output to log Blenders output
-        //process.StartInfo.RedirectStandardOutput = true;
+        process.StartInfo.RedirectStandardOutput = true;
         process.Start();
 
         Console.WriteLine("Rendering frame {0} - {1}...", first_frame, last_frame);
 
         // Log the output
         process.WaitForExit();
-        //string cmd_output = process.StandardOutput.ReadToEnd();
-        //Write_Log(cmd_output);
+        string cmd_output = process.StandardOutput.ReadToEnd();
+        Logger.Log(this, cmd_output);
     }
 
     #region Setup

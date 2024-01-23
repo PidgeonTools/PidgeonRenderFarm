@@ -32,9 +32,9 @@ if json_object["File_Format"] in ["AVI_JPEG", "AVI_RAW", "FFMPEG"]:
 if argv[0] == "1":
     # Try to call SFR
     try:
-        bpy.ops.render.superfastrender_benchmark()
+        bpy.ops.superfastrender.benchmark_frame()
         # Save the new settings
-        bpy.ops.wm.save_as_mainfile(filepath=bpy.data.filepath)
+        bpy.ops.wm.save_as_mainfile()
     except AttributeError:
        print("SuperFastRender is NOT installed!")
 

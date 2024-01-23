@@ -14,7 +14,7 @@ Pidgeon Render Farm is an innovative, **peer-to-peer** render farm software that
 - **Integration**: It integrates seamlessly with other addons by PidgeonTools, enhancing its functionality.
 - **Security**: The peer-to-peer nature of the software ensures your data stays secure and only on your devices.
 - **Support**: Free support is available to help you navigate any challenges.
-- **Compatibility**: The software supports many operating systems, including modern Windows (7 and above), Linux, and MacOS.
+- **Compatibility**: The software supports many operating systems, including modern Windows (10 and above), Linux, and MacOS.
 
 ## Why Pidgeon Render Farm?
 By choosing Pidgeon Render Farm, you're choosing a solution that's secure, customizable, and supportive of your local render farm needs.
@@ -69,4 +69,4 @@ The installation guide moved [here](QUICK_START.md), Troubleshooting moved [here
 You may have to configure your firewall. [See troubleshooting section for more details](TROUBLESHOOTING.md#server-socket-wont-start).
 
 ## Want to actively support the development of Pidgeon Render Farm?
-We prepared [this page](DEVELOPER.md) to get you started. Have a look!
+We prepared [this page](CONTRIBUTING.md) to get you started. Have a look!

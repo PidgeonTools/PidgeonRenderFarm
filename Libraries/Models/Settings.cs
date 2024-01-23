@@ -1,4 +1,6 @@
-﻿namespace Libraries.Models;
+﻿using Libraries.Enums;
+
+namespace Libraries.Models;
 
 public class Settings
 {
@@ -6,6 +8,7 @@ public class Settings
     public bool Allow_Data_Collection { get; set; }
     //public bool Enable_Analytics { get; set; } = false;
     public bool Enable_Logging { get; set; }
+    public LogLevel Log_level { get; set; } = LogLevel.Info;
     public DBConnection? Database_Connection { get; set; }
 }
 

@@ -43,7 +43,7 @@ public static class DBHandler
             {
                 File.Create(Path.Join(DB.Path, "Log.db")).Dispose();
             }
-            Log_SQLite_Connection = new SqliteConnection($"Data Source={Path.Join(DB.Path, "Log.db")}; Cache=Shared");
+            Log_SQLite_Connection = new SqliteConnection($"Data Source={Path.Join(DB.Path, "Log.db")}");
             Log_SQLite_Connection.Open();
 
             List<string> log_table = new List<string>();
@@ -62,20 +62,15 @@ public static class DBHandler
 
             if (log_table.Count == 0)
             {
-                using (SqliteTransaction transaction = Log_SQLite_Connection.BeginTransaction())
-                {
-                    query = Log_SQLite_Connection.CreateCommand();
-                    query.CommandText =
-                    "CREATE TABLE \"LOG\" " +
-                    "(\"ID\" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
-                    "\"TIME\" TEXT NOT NULL, " +
-                    "\"LEVEL\" TEXT NOT NULL, " +
-                    "\"MODULE\" TEXT NOT NULL, " +
-                    "\"MESSAGE\" TEXT NOT NULL)";
-                    query.ExecuteNonQuery();
-
-                    transaction.Commit();
-                }
+                query = Log_SQLite_Connection.CreateCommand();
+                query.CommandText =
+                "CREATE TABLE \"LOG\" " +
+                "(\"ID\" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "\"TIME\" TEXT NOT NULL, " +
+                "\"LEVEL\" TEXT NOT NULL, " +
+                "\"MODULE\" TEXT NOT NULL, " +
+                "\"MESSAGE\" TEXT NOT NULL)";
+                query.ExecuteNonQuery();
             }
         }
     }
@@ -95,7 +90,7 @@ public static class DBHandler
             {
                 File.Create(Path.Join(DB.Path, "Project.db")).Dispose();
             }
-            Project_SQLite_Connection = new SqliteConnection($"Data Source={Path.Join(DB.Path, "Project.db")}; Cache=Shared");
+            Project_SQLite_Connection = new SqliteConnection($"Data Source={Path.Join(DB.Path, "Project.db")}");
             Project_SQLite_Connection.Open();
 
             List<string> project_table = new List<string>();
@@ -116,18 +111,13 @@ public static class DBHandler
             {
                 if (!load)
                 {
-                    using (SqliteTransaction transaction = Project_SQLite_Connection.BeginTransaction())
-                    {
-                        query = Project_SQLite_Connection.CreateCommand();
-                        query.CommandText =
-                        $"CREATE TABLE \"{Project_ID}\" " +
-                        "(\"ID\" INTEGER PRIMARY KEY NOT NULL, " +
-                        "\"STATE\" TEXT NOT NULL," +
-                        "\"Client\" TEXT)";
-                        query.ExecuteNonQuery();
-
-                        transaction.Commit();
-                    }
+                    query = Project_SQLite_Connection.CreateCommand();
+                    query.CommandText =
+                    $"CREATE TABLE \"{Project_ID}\" " +
+                    "(\"ID\" INTEGER PRIMARY KEY NOT NULL, " +
+                    "\"STATE\" TEXT NOT NULL," +
+                    "\"Client\" TEXT)";
+                    query.ExecuteNonQuery();
                 }
                 else
                 {
@@ -150,24 +140,21 @@ public static class DBHandler
         int frames_total = 0;
         if (DB.Mode == DBMode.SQLite)
         {
-            using (SqliteTransaction transaction = Project_SQLite_Connection.BeginTransaction())
+            for (int i = first_frame; i <= last_frame; i += frame_step)
             {
-                for (int i = first_frame; i <= last_frame; i += frame_step)
-                {
-                    SqliteCommand query = Project_SQLite_Connection.CreateCommand();
-                    query.CommandText =
-                    $"INSERT INTO \"{Project_ID}\" " +
-                    "(ID, STATE) " +
-                    "VALUES " +
-                    $"({i}, \"Open\");";
+                SqliteCommand query = Project_SQLite_Connection.CreateCommand();
+                query.CommandText =
+                $"INSERT INTO \"{Project_ID}\" " +
+                "(ID, STATE) " +
+                "VALUES " +
+                $"({i}, \"Open\");";
 
-                    //Console.WriteLine(query.CommandText);
-                    query.ExecuteNonQuery();
+                //Console.WriteLine(query.CommandText);
+                query.ExecuteNonQuery();
 
-                    transaction.Commit();
+                
 
-                    frames_total++;
-                }
+                frames_total++;
             }
         }
 
@@ -299,20 +286,15 @@ public static class DBHandler
     {
         if (DB.Mode == DBMode.SQLite)
         {
-            using (SqliteTransaction transaction = Project_SQLite_Connection.BeginTransaction())
+            foreach (Frame frame in frames)
             {
-                foreach (Frame frame in frames)
-                {
-                    SqliteCommand query = Project_SQLite_Connection.CreateCommand();
-                    query.CommandText =
-                    $"UPDATE \"{Project_ID}\" " +
-                    $"SET STATE = \"{frame.State}\" " +
-                    (string.IsNullOrEmpty(frame.IPv4) ? "" : $", Client = \"{frame.IPv4}\" ") +
-                    $"WHERE ID = {frame.Id}";
-                    query.ExecuteNonQuery();
-                }
-
-                transaction.Commit();
+                SqliteCommand query = Project_SQLite_Connection.CreateCommand();
+                query.CommandText =
+                $"UPDATE \"{Project_ID}\" " +
+                $"SET STATE = \"{frame.State}\" " +
+                (string.IsNullOrEmpty(frame.IPv4) ? "" : $", Client = \"{frame.IPv4}\" ") +
+                $"WHERE ID = {frame.Id}";
+                query.ExecuteNonQuery();
             }
         }
     }
@@ -330,18 +312,13 @@ public static class DBHandler
     {
         if (DB.Mode == DBMode.SQLite)
         {
-            using (SqliteTransaction transaction = Log_SQLite_Connection.BeginTransaction())
-            {
-                SqliteCommand query = Log_SQLite_Connection.CreateCommand();
-                query.CommandText =
-                "INSERT INTO LOG " +
-                "(TIME, LEVEL, MODULE, MESSAGE) " +
-                "VALUES " +
-                $"(\"{time}\", \"{level.ToString()}\", \"{module}\", \"{message}\");";
-                query.ExecuteNonQuery();
-
-                transaction.Commit();
-            }
+            SqliteCommand query = Log_SQLite_Connection.CreateCommand();
+            query.CommandText =
+            "INSERT INTO LOG " +
+            "(TIME, LEVEL, MODULE, MESSAGE) " +
+            "VALUES " +
+            $"(\"{time}\", \"{level.ToString()}\", \"{module}\", \"{message}\");";
+            query.ExecuteNonQuery();
         }
     }
     #endregion

@@ -9,7 +9,6 @@ using Libraries;
 using Libraries.Models;
 using Libraries.Models.Database;
 using Libraries.Enums;
-using System.Runtime.InteropServices;
 
 class Master
 {
@@ -20,7 +19,6 @@ class Master
     public static string Project_Directory = "";
 
     // Create global objects and variables
-    public static string IP_Address_String = "127.0.0.1";
     public static MasterSettings Settings;
     public static Project Project;
     private static object Log_DB_Lock = new object();
@@ -42,9 +40,6 @@ class Master
     }
     public void Start(string[] args)
     {
-        // Console.WriteLine(Bin_Directory);
-        // Console.ReadKey();
-        // Get log directory name and create it
         Settings_File_Handler = new SettingsFileHandler(Path.Join(Bin_Directory, "master_settings.json"));
 
         try
@@ -56,7 +51,7 @@ class Master
             }
             File.Delete(Path.Join(Bin_Directory, "master_settings_override.json"));
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             try
             {
@@ -72,11 +67,19 @@ class Master
                 // Run setup
                 First_Time_Setup();
             }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Unexpected Exception, please contact Pidgeon Tools if the error persists!");
+                Console.WriteLine(ex);
+                Console.ReadLine();
+
+                Environment.Exit(1);
+            }
         }
 
         // Initialize static classes
         ProjectFileHandler.Bin_Directory = Bin_Directory;
-        Logger.Enable_Logging = Settings.Enable_Logging;
+        Logger.Initialize(Settings.Enable_Logging, Settings.Log_level);
 
         if (!Directory.Exists(Settings.Database_Connection.Path))
         {
@@ -97,7 +100,7 @@ class Master
         }
         catch (Exception ex)
         {
-            Console.WriteLine(ex);
+            Logger.Log(this, ex.ToString(), LogLevel.Warn, true);
         }
 
         if (!Using_SRF)
@@ -141,7 +144,7 @@ class Master
                 Display.Show_Top_Bar("Master");
 
                 string user_input = "";
-                while (!File.Exists(user_input) && !user_input.EndsWith("prfp"))
+                while (!File.Exists(user_input) && !user_input.ToLower().EndsWith("prfp"))
                 {
                     Console.WriteLine("Where is your PidgeonRenderFarm project stored?");
                     Console.WriteLine("Please input the path to your project");
@@ -158,7 +161,7 @@ class Master
                 }
                 catch (FileLoadException)
                 {
-                    Logger.Log(this, "Invalid project file");
+                    Logger.Log(this, $"Invalid project file: {user_input}", LogLevel.Error);
                 }
             }
 
@@ -190,7 +193,7 @@ class Master
             else
             {
                 // Exit PRF
-                Environment.Exit(1);
+                Environment.Exit(0);
             }
         }
     }
@@ -198,9 +201,9 @@ class Master
     void Render_Project()
     {
         Console.Clear();
-        Progress_Bar = new ProgressBar(Project.Last_Frame, "Rendering: ", Project.First_Frame, Project.Frame_Step);
+        Progress_Bar = new ProgressBar(Project.Frames_Total, "Rendering: ");
 
-        IPAddress ip_address = null;
+        IPAddress ip_address;
         if (string.IsNullOrWhiteSpace(Settings.IPv4_Overwrite))
         {
             // Get the local IPv4 of device
@@ -210,9 +213,10 @@ class Master
         {
             ip_address = IPAddress.Parse(Settings.IPv4_Overwrite);
         }
+
+        Logger.Log(this, "Master IPv4: " + ip_address.ToString(), silenced:true);
         
-        IP_Address_String = ip_address.ToString();
-        Display.Show_Top_Bar("Master", new List<string> { $"Master IP address: {IP_Address_String}",
+        Display.Show_Top_Bar("Master", new List<string> { $"Master IP address: {ip_address}",
                                                           $"Master Port: {Settings.Port}" });
 
         List<Thread> threads = new List<Thread>();
@@ -227,13 +231,15 @@ class Master
         try
         {
             // Socket for clients initial connection (TCP)
-            TcpListener listener = new(IPAddress.Parse(IP_Address_String), Settings.Port);
+            TcpListener listener = new(ip_address, Settings.Port);
             listener.Start();
 
             Logger.Log(this, "Waiting for Clients...");
 
+            int frames_pending = Project.Frames_Total;
+
             // While there are unrendered frames await clients
-            while (DBHandler.Select_Frames_Table_All_Pending().Count > 0)
+            while (frames_pending > 0)
             {
                 try
                 {
@@ -251,18 +257,26 @@ class Master
                         }
                         else
                         {
-                            Thread.Sleep(5000);
+                            Thread.Sleep(1000);
                         }
                     }
                     else
                     {
-                        Logger.Log(this, $"Refused Client. Reason: too many Clients", LogLevel.Warn);
-                        Thread.Sleep(1000);
+                        Logger.Log(this, $"Refused Client. Reason: too many Clients", LogLevel.Info);
+                        Thread.Sleep(5000);
                     }
                 }
                 catch (Exception ex)
                 {
                     Logger.Log(this, ex.ToString(), LogLevel.Error);
+                }
+
+                lock (Project_DB_Lock)
+                {
+                    frames_pending = DBHandler.Select_Frames_Table_All_Pending().Count;
+                    Logger.Log(this, "Frames pending: " + frames_pending);
+
+                    Progress_Bar.Update(frames_pending, true);
                 }
             }
             listener.Stop();
@@ -270,7 +284,7 @@ class Master
         catch (Exception ex)
         {
             // Log errors
-            Logger.Log(this, ex.ToString(), LogLevel.Error);
+            Logger.Log(this, ex.ToString(), LogLevel.Fatal);
         }
 
         Logger.Log(this, $"Rendering finished! After {DateTime.Now - start_time}");
@@ -292,13 +306,10 @@ class Master
             // Redirect output to log Blenders output
             process.StartInfo.RedirectStandardOutput = Settings.Enable_Logging;
             process.Start();
-            if (Settings.Enable_Logging)
-            {
-                // Print and log the output
-                process.WaitForExit();
-                string cmd_output = process.StandardOutput.ReadToEnd();
-                Logger.Log(this, cmd_output);
-            }
+            // Print and log the output
+            process.WaitForExit();
+            string cmd_output = process.StandardOutput.ReadToEnd();
+            Logger.Log(this, cmd_output, LogLevel.Debug, true);
 
             Logger.Log(this, $"Denoising finished! After {DateTime.Now - start_time}");
         }
@@ -324,7 +335,9 @@ class Master
             // Convert bytes to string
             string json_receive = Encoding.UTF8.GetString(buffer, 0, received);
             ClientResponse client_response;
-            
+
+            Logger.Log(this, json_receive, LogLevel.Trace, true);
+
             // Convert string to an object
             client_response = JsonSerializer.Deserialize<ClientResponse>(json_receive);
 
@@ -336,7 +349,7 @@ class Master
             if (client_response.Message == "new")
             {
                 // If Client wants work, check if frames are left
-                List<Frame> frames = Aquire_Frames(client_response, client.RemoteEndPoint.ToString().Split(':')[0]);
+                List<Frame> frames = Aquire_Frames(client_response, client.RemoteEndPoint.ToString().Split(':')[0], out string reason);
 
                 master_response.Message = "NAN";
 
@@ -375,6 +388,7 @@ class Master
 
                 // Convert the object to string
                 json_send = JsonSerializer.Serialize(master_response);
+                Logger.Log(this, json_send, LogLevel.Trace, true);
                 // Convert string to bytes
                 byte[] bytes_send = Encoding.UTF8.GetBytes(json_send);
                 // Send bytes to client
@@ -382,7 +396,7 @@ class Master
 
                 if (master_response.Message == "NAN")
                 {
-                    Logger.Log(this, $"No frames assigned to {client.RemoteEndPoint}");
+                    Logger.Log(this, $"No frames assigned to {client.RemoteEndPoint}. Reason: {reason}");
                 }
                 else
                 {
@@ -395,6 +409,7 @@ class Master
                         received = client.Receive(buffer);
                         // Convert bytes to string
                         json_receive = Encoding.UTF8.GetString(buffer, 0, received);
+                        Logger.Log(this, json_receive, LogLevel.Trace, true);
                         // Convert string to an object
                         client_response = JsonSerializer.Deserialize<ClientResponse>(json_receive);
 
@@ -439,7 +454,6 @@ class Master
                     
                         // Generate a path for the file
                         string path = Path.Join(Project_Directory, zip_file);
-                        Logger.Log(this, $"test");
                         // Download the file into the path
                         using (FileStream file_stream = File.Create(path))
                         {
@@ -496,7 +510,7 @@ class Master
                 // Convert string to bytes
                 byte[] bytes_send = Encoding.UTF8.GetBytes(json_send);
 
-                Logger.Log(this, "Received ping! Returning pong");
+                Logger.Log(this, "Received ping!");
 
                 client.Send(bytes_send);
             }
@@ -631,7 +645,7 @@ class Master
     }
 
     // Aquire frames for the Client
-    List<Frame> Aquire_Frames(ClientResponse requirements, string ipv4)
+    List<Frame> Aquire_Frames(ClientResponse requirements, string ipv4, out string reason)
     {
         List<Frame> old_frames = new List<Frame>();
         lock (Project_DB_Lock)
@@ -659,6 +673,7 @@ class Master
 
         if (tmp.Count == 0)
         {
+            reason = "Blender version missmatch";
             return empty_list;
         }
 
@@ -669,7 +684,7 @@ class Master
         foreach (Blender blender in tmp)
         {
             if (blender.Allowed_Render_Engines.Contains(Project.Render_Engine)
-                || blender.Allowed_Render_Engines.Contains("other")) ;
+                || blender.Allowed_Render_Engines.Contains("other"))
             {
                 has_render_engine = true;
             }
@@ -677,6 +692,7 @@ class Master
 
         if (!has_render_engine)
         {
+            reason = "Render engine not installed";
             return empty_list;
         }
 
@@ -685,6 +701,7 @@ class Master
         if (requirements.Render_Time_Limit != 0
             && requirements.Render_Time_Limit < Project.Time_Per_Frame)
         {
+            reason = "Time limit exceeded";
             return empty_list;
         }
 
@@ -693,6 +710,7 @@ class Master
         if (requirements.RAM_Use_Limit != 0
             && requirements.RAM_Use_Limit < Project.RAM_Use)
         {
+            reason = "RAM limit exceeded";
             return empty_list;
         }
 
@@ -703,6 +721,7 @@ class Master
 
             if (frames.Count == 0)
             {
+                reason = "No open frames";
                 return empty_list;
             }
 
@@ -730,6 +749,7 @@ class Master
 
             DBHandler.Update_Frames_Table(frames_picked);
 
+            reason = "";
             return frames_picked;
         }
     }
@@ -746,6 +766,7 @@ class Master
         Settings.Database_Connection = new DBConnection(DBMode.SQLite, Path.Join(Bin_Directory, "Database"));
         Settings.SMB_Connection = new SMBConnection("", "", "");
         Settings.FTP_Connection = new FTPConnection("", "", "");
+        Settings.Log_level = LogLevel.Info;
 
         // Enable logging
         // Use Menu() to grab user input
@@ -862,7 +883,7 @@ class Master
         );
         Settings.Allow_Data_Collection = Helpers.Parse_Bool(menu.Show());
 
-        Logger.Enable_Logging = Settings.Enable_Logging;
+        Logger.Initialize(Settings.Enable_Logging, Settings.Log_level);
 
         // Save the settings
         Settings_File_Handler.Save_Settings(Settings);
@@ -1039,7 +1060,7 @@ class Master
             new List<string> { "Please select your prefered Blender version" }
         );
         string selection = menu.Show();
-        Project.Blender_Version = (selection);
+        Project.Blender_Version = selection;
 
         // Get project directory name and create it
         Project_Directory = Path.Join(Bin_Directory, Project.ID);
@@ -1048,48 +1069,56 @@ class Master
         Display.Show_Top_Bar("Master");
         Console.WriteLine("Gathering informations of your project. This may take a while. Please wait...");
 
-        // Create a command for blender to optain some variables
-        string args = $"-b \"{Project.Full_Path_Blend}\" -P {Path.Join(Bin_Directory, "BPY.py")} -- {Helpers.Bool_To_Int(Project.Use_SFR)} {Helpers.Bool_To_Int(Project.Render_Test_Frame)}";
-
-        // Use Blender to obtain informations about the project
-        // additionally use SFR if selected
-        Process process = new Process();
-        // Set Blender as executable
-        process.StartInfo.FileName = Settings.Blender_Installations.FirstOrDefault(blender => blender.Version == Project.Blender_Version).Executable;
-        // Use the command string as args
-        process.StartInfo.Arguments = args;
-        process.StartInfo.CreateNoWindow = true;
-        // Redirect output to log Blenders output
-        process.StartInfo.RedirectStandardOutput = true;
-        process.Start();
-        // Print and log the output
-        string cmd_output = "";
-        while (!process.HasExited)
+        try
         {
-            cmd_output += process.StandardOutput.ReadToEnd();
-            Console.WriteLine(cmd_output);
+            // Create a command for blender to optain some variables
+            string args = $"-b \"{Project.Full_Path_Blend}\" -P {Path.Join(Bin_Directory, "BPY.py")} -- {Helpers.Bool_To_Int(Project.Use_SFR)} {Helpers.Bool_To_Int(Project.Render_Test_Frame)}";
+
+            // Use Blender to obtain informations about the project
+            // additionally use SFR if selected
+            Process process = new Process();
+            // Set Blender as executable
+            process.StartInfo.FileName = Settings.Blender_Installations.FirstOrDefault(blender => blender.Version == Project.Blender_Version).Executable;
+            // Use the command string as args
+            process.StartInfo.Arguments = args;
+            process.StartInfo.CreateNoWindow = true;
+            // Redirect output to log Blenders output
+            process.StartInfo.RedirectStandardOutput = true;
+            process.Start();
+            // Print and log the output
+            string cmd_output = "";
+            while (!process.HasExited)
+            {
+                cmd_output += process.StandardOutput.ReadToEnd();
+                Console.WriteLine(cmd_output);
+            }
+
+            // Read the output
+            string json_string = File.ReadAllText(Path.Join(Path.GetDirectoryName(Project.Full_Path_Blend), "vars.json"));
+            Logger.Log(this, json_string, LogLevel.Trace);
+            ProjectInfo project_info = JsonSerializer.Deserialize<ProjectInfo>(json_string);
+            File.Delete(Path.Join(Path.GetDirectoryName(Project.Full_Path_Blend), "vars.json"));
+
+            // Apply the values to project object
+            Project.Render_Engine = project_info.Render_Engine;
+            Project.Time_Per_Frame = project_info.Render_Time;
+            Project.Output_File_Format = project_info.File_Format;
+            Project.First_Frame = project_info.First_Frame;
+            Project.Last_Frame = project_info.Last_Frame;
+            Project.Frame_Step = project_info.Frame_Step;
+
+            Initialize_Project();
+
+            // Save the project
+            ProjectFileHandler.Save_Project(Project, Path.Join(Project_Directory, $"{Project.ID}.prfp"));
+
+            // Start rendering
+            Render_Project();
         }
-
-        // Read the output
-        string json_string = File.ReadAllText(Path.Join(Path.GetDirectoryName(Project.Full_Path_Blend), "vars.json"));
-        ProjectInfo project_info = JsonSerializer.Deserialize<ProjectInfo>(json_string);
-        File.Delete(Path.Join(Path.GetDirectoryName(Project.Full_Path_Blend), "vars.json"));
-
-        // Apply the values to project object
-        Project.Render_Engine = project_info.Render_Engine;
-        Project.Time_Per_Frame = project_info.Render_Time;
-        Project.Output_File_Format = project_info.File_Format;
-        Project.First_Frame = project_info.First_Frame;
-        Project.Last_Frame = project_info.Last_Frame;
-        Project.Frame_Step = project_info.Frame_Step;
-
-        Initialize_Project();
-
-        // Save the project
-        ProjectFileHandler.Save_Project(Project, Path.Join(Project_Directory, $"{Project.ID}.prfp"));
-
-        // Start rendering
-        Render_Project();
+        catch (Exception ex)
+        {
+            Logger.Log(this, ex.ToString(), LogLevel.Fatal);
+        }
     }
 
     public static void Initialize_Project()

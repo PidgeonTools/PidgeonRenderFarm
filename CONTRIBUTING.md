@@ -1,6 +1,4 @@
 # 👨‍💻Developer
-# Welcome to the development guide! Here we will get you familiar with everything you need to know as a developer.
-
 ## Requirements
 It is recommended that you use a proper IDE like Visual Studio (not Code) or Jetbrains Rider, but be aware that some IDEs require you to share some of the profit, others offer free versions for FOSS projects, be aware that Pidgeon Render Farm also has a paid beta version, so it is not eligible for Jetbrains Rider for FOSS projects.
 

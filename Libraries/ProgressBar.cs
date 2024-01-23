@@ -5,18 +5,16 @@ public class ProgressBar
     private float Start { get; set; }
     private float End { get; set; }
     public float Current { get; set; }
-    public float Step { get; set; }
 
     public string Info_Text;
     public char Border_Char = '|';
     public char Progress_Char = '#';
     public char Empty_Char = ' ';
 
-    public ProgressBar(float end, string info_text = "", float start = 0, float step = 1)
+    public ProgressBar(float end, string info_text = "", float start = 0)
     {
         Start = start / 1.0f;
         End = end / 1.0f;
-        Step = step / 1.0f;
         Info_Text = info_text;
     }
 
@@ -24,9 +22,9 @@ public class ProgressBar
     {
         Console.WriteLine(Get());
     }
-    public void Show(float step)
+    public void Show(float step, bool absolute = false)
     {
-        Update(step / 1.0f);
+        Update(step / 1.0f, absolute);
         Console.WriteLine(Get());
     }
 
@@ -36,6 +34,8 @@ public class ProgressBar
         string percent_string = percent.ToString("##0");
         int bar_max = Console.WindowWidth - 6 - Info_Text.Length;
         int bar_factor = (int)Math.Floor(bar_max / (End - Start));
+
+        Logger.Log(this, "Console Width: " + Console.WindowWidth, Enums.LogLevel.Debug);
 
         string bar = Info_Text;
         bar += percent_string.PadLeft(3, ' ') + "%";
@@ -47,13 +47,17 @@ public class ProgressBar
         return bar;
     }
 
-    public void Update(float step = 0)
+    public void Update(float step, bool absolute = false)
     {
-        if (step == 0)
+        if (absolute)
         {
-            step = Step;
+            Current = step;
+            Current = Math.Clamp(Current, Start, End);
         }
-        Current += step;
-        Current = Math.Clamp(Current, Start, End);
+        else
+        {
+            Current += step;
+            Current = Math.Clamp(Current, Start, End);
+        }
     }
 }
