@@ -1,0 +1,37 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <RootNamespace>PidgeonRenderFarm.Common</RootNamespace>
+        <LangVersion>default</LangVersion>
+        <Authors>PidgeonTools</Authors>
+        <PackageProjectUrl>https://github.com/PidgeonTools/PidgeonRenderFarm/</PackageProjectUrl>
+        <PackageLicenseUrl>https://github.com/PidgeonTools/PidgeonRenderFarm/blob/main/LICENSE</PackageLicenseUrl>
+        <RepositoryUrl>https://github.com/PidgeonTools/PidgeonRenderFarm/</RepositoryUrl>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <EmbeddedResource Include="ASP.NET/styles.css" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Folder Include="API\Models\" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.5" />
+      <PackageReference Include="Microsoft.EntityFrameworkCore.Proxies" Version="9.0.5" />
+      <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="9.0.5" />
+      <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.5" />
+      <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+      <PackageReference Include="System.Xml.ReaderWriter" Version="4.3.1" />
+    </ItemGroup>
+
+
+</Project>

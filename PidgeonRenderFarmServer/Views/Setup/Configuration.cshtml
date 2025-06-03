@@ -1,0 +1,86 @@
+<div style="display: flex; flex-direction: column; gap: 32px;">
+    <div>
+        <h2>Configuration</h2>
+    </div>
+    
+    <div style="display: flex; gap: 64px;">
+        <div>
+            <h4>IP-Address</h4>
+            <input type="text" minlength="7" maxlength="15" size="15" id="config-ip"/>
+        </div>
+
+        <div>
+            <h4>Port</h4>
+            <input type="number" min="1" max="65535" id="config-port"/>
+        </div>
+    </div>
+
+    <div style="display: flex; gap: 64px;">
+        <div>
+            <h4>Log Level</h4>
+            <select id="config-log-level">
+                <option value="1">Warn</option>
+            </select>
+        </div>
+    </div>
+    
+    <div style="display: flex; gap: 64px;">
+        <div>
+            <h4>FFmpeg Path</h4>
+            <input type="text" maxlength="255" id="config-ffmpeg-path" style="width: 400px"/>
+        </div>
+    </div>
+    
+    <div>
+        <button type="button" id="config-save" onclick="saveConfiguration();">Save</button>
+    </div>
+</div>
+
+@section scripts
+{
+    <script type="text/javascript">
+        let ipInput = document.getElementById("config-ip");
+        let portInput = document.getElementById("config-port");
+
+        let logLevelInput = document.getElementById("config-log-level");
+
+        let ffmpegPathInput = document.getElementById("config-ffmpeg-path");
+
+        loadLogLevels();
+
+        loadConfiguration();
+
+        function loadConfiguration() {
+            $.get("/setup/api/configuration", function (configuration) {
+                ipInput.value = configuration.iPAddressString;
+                portInput.value = configuration.port;
+                logLevelInput.value = configuration.logLevel;
+                ffmpegPathInput.value = configuration.fFmpegPath;
+            });
+        }
+        
+        function saveConfiguration() {
+            $.post("/setup/api/configuration", {
+                receivedConfiguration: {
+                    port: portInput.value,
+                    iPAddressString: ipInput.value,
+                    logLevel: logLevelInput.value,
+                    fFmpegPath: ffmpegPathInput.value
+                }
+            }).done(function(data) {
+                alert("Configuration saved successfully.");
+            });
+        }
+
+        
+        function loadLogLevels() {
+            $.get("/api/log-levels", function (logLevels) {
+                logLevelInput.innerHTML = "";
+
+                for (const [key, value] of Object.entries(logLevels)) {
+                    $(logLevelInput).append('<option value="' + value + '">' + key +  '</option>');
+                }
+            });
+        }
+    </script>
+}
