@@ -6,6 +6,9 @@
 # Videos and Blend files for Testing
 *.blend
 *.mp4
+*.db
+*.db-shm
+*.Development.json
 
 # User-specific files
 *.rsuser
