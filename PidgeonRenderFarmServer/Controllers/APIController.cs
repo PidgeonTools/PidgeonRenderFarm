@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using PidgeonRenderFarm.Common.Models;
+using PidgeonRenderFarm.Server;
 
 namespace PidgeonRenderFarmServer.Controllers;
 
@@ -19,5 +20,18 @@ public class APIController : Controller
             .Cast<LogLevel>()
             .ToDictionary(key => key.ToString(), value => (int)value);
         return Json(logLevels);
+    }
+    
+    [HttpGet]
+    [Route("shutdown")]
+    public void ShutdownApplication()
+    {
+        ServerKernel.RequestShutdown();
+    }
+    [HttpGet]
+    [Route("restart")]
+    public void RestartApplication()
+    {
+        ServerKernel.RequestRestart();
     }
 }

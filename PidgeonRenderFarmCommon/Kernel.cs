@@ -9,10 +9,21 @@ public abstract class Kernel<TConfiguration, TContext>
     where TConfiguration : Configuration<TConfiguration>
     where TContext : BaseContext<TContext, TConfiguration>
 {
-    public static bool RestartRequested { get; set; } = false;
+    public static bool RestartRequested { get; private set; }
+    public static CancellationTokenSource ShutdownRequestedToken { get; private set; }
+
+    public static void RequestShutdown()
+    {
+        ShutdownRequestedToken.Cancel();
+    }
+    public static void RequestRestart()
+    {
+        RestartRequested = true;
+        RequestShutdown();
+    }
     
     public static bool RequiresConfiguration { get; protected set; } = true;
-    public static TConfiguration? ActiveConfiguration { get; protected set; }
+    public static TConfiguration? ActiveConfiguration { get; private set; }
     public static List<BlenderInstallation> BlenderInstallations { get; private set; }
     public static void LoadConfiguration()
     {
@@ -57,6 +68,13 @@ public abstract class Kernel<TConfiguration, TContext>
         }
         
         return true;
+    }
+
+    public static void Start()
+    {
+        LoadConfiguration();
+        RestartRequested = false;
+        ShutdownRequestedToken = new CancellationTokenSource();
     }
 
     private static readonly HttpClientHandler _httpClientHandler = new HttpClientHandler()

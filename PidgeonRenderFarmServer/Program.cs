@@ -11,10 +11,10 @@ builder.Services.AddRazorPages();
 builder.Services.AddRazorComponents();
 
 WebApplication app = builder.Build();
-
+        
 do
 {
-    ServerKernel.LoadConfiguration();
+    ServerKernel.Start();
     
     // Configure the HTTP request pipeline.
     if (!app.Environment.IsDevelopment())
@@ -38,6 +38,6 @@ do
         name: "default",
         pattern: "{controller=Home}/{action=Index}/{id?}");
     
-    app.Run();
+    app.RunAsync(ServerKernel.ShutdownRequestedToken.Token).GetAwaiter().GetResult();
 }
 while (ServerKernel.RestartRequested);

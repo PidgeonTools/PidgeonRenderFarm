@@ -17,14 +17,6 @@ public class SetupController : Controller
     }
     
     [HttpGet]
-    [Route("api/restart")]
-    public void RestartApplication()
-    {
-        ServerKernel.RestartRequested = true;
-        throw new Exception();
-    }
-    
-    [HttpGet]
     [Route("api/configuration")]
     public async Task<JsonResult> GetCurrentConfiguration()
     {
