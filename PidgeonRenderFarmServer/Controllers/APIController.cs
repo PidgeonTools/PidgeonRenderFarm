@@ -7,10 +7,6 @@ namespace PidgeonRenderFarmServer.Controllers;
 [Route("api")]
 public class APIController : Controller
 {
-    public async Task<JsonResult> GetCurrentProjectNameAsync()
-    {
-        return new JsonResult("");
-    }
     
     [HttpGet]
     [Route("log-levels")]

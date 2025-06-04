@@ -1,0 +1,12 @@
+@using PidgeonRenderFarm.Common.Models
+@model NavbarDropdownModel
+
+<div class="navbar-dropdown">
+    <a class="navbar-dropdown-button" style="cursor: @(string.IsNullOrWhiteSpace(Model.HeaderLink) ? "default" : "pointer");" href="@Model.HeaderLink">@Model.Header</a>
+    <div class="navbar-dropdown-content">
+        @foreach (KeyValuePair<string, string> item in Model.Items)
+        {
+            <a href="@item.Value">@item.Key</a>
+        }
+    </div>
+</div>

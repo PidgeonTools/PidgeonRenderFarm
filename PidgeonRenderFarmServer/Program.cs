@@ -4,11 +4,11 @@ using PidgeonRenderFarm.Server;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
 builder.Services.AddControllersWithViews();
-
 builder.Services.AddRazorPages();
 builder.Services.AddRazorComponents();
+
+builder.WebHost.UseKestrel();
 
 WebApplication app = builder.Build();
         
@@ -34,9 +34,7 @@ do
 
     //app.UseAuthorization();
 
-    app.MapControllerRoute(
-        name: "default",
-        pattern: "{controller=Home}/{action=Index}/{id?}");
+    app.MapControllerRoute("default", "/dashboard");
     
     app.RunAsync(ServerKernel.ShutdownRequestedToken.Token).GetAwaiter().GetResult();
 }
