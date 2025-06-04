@@ -15,7 +15,6 @@ public class SetupController : Controller
     {
         return View();
     }
-    
     [HttpGet]
     [Route("api/configuration")]
     public async Task<JsonResult> GetCurrentConfiguration()
@@ -32,6 +31,11 @@ public class SetupController : Controller
         return Json(true);
     }
     
+    [Route("blender-installations")]
+    public async Task<IActionResult> BlenderInstallations()
+    {
+        return View();
+    }
     [HttpGet]
     [Route("api/blender-installations")]
     public async Task<JsonResult> GetCurrentBlenderInstallations()

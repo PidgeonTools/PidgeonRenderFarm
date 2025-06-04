@@ -1,0 +1,106 @@
+
+<div>
+    <h2>Blender installations</h2>
+</div>
+
+
+<div style="display: flex; flex-direction: column" id="blender-installations-list" ></div>
+
+<div>
+    <button type="button" id="blender-installations-add" onclick="addBlenderInstallation();">Add</button>
+</div>
+
+<div>
+    <button type="button" id="config-save" onclick="saveConfiguration();">Save</button>
+</div>
+
+@section scripts
+{
+    <script type="text/javascript">
+        let blenderInstallations = [];
+
+        loadBlenderInstallations();
+        function loadBlenderInstallations() {
+            $.get("/setup/api/blender-installations", function (receivedBlenderInstallations) {
+                blenderInstallations = receivedBlenderInstallations;
+
+                if (blenderInstallations.length === 0) {
+                    addBlenderInstallation();
+                }
+                else {
+                    updateBlenderInstallationsDisplay();
+                }
+                
+            });
+        }
+        function saveBlenderInstallations() {
+            $.post("/setup/api/blender-installations", {
+                receivedBlenderInstallations: blenderInstallations
+            }).done(function(data) {
+                alert("Blender installations saved successfully.");
+            });
+        }
+
+        function addBlenderInstallation() {
+            blenderInstallations.push({ binaryPath: "", device: 0 });
+            updateBlenderInstallationsDisplay();
+        }
+        function removeBlenderInstallation(index) {
+            if (index >= 0 && index < blenderInstallations.length) {
+                blenderInstallations.splice(index, 1);
+                updateBlenderInstallationsDisplay();
+            }
+        }
+        function updateBlenderInstallation(index, field, value) {
+            if (field === "device") {
+                value = parseInt(value);
+            }
+            else {
+                value = value.trim();
+            }
+            blenderInstallations[index][field] = value;
+        }
+
+        const blenderInstallationsList = document.getElementById("blender-installations-list");
+        function updateBlenderInstallationsDisplay() {
+            blenderInstallationsList.innerHTML = "";
+
+            blenderInstallations.forEach((installation, index) => {
+                let div = document.createElement("div");
+                div.innerHTML = `
+                    <h3>Blender Installation #${index + 1}</h3>
+                    <div style="display: flex; gap: 64px; align-items: end;">
+                        <div>
+                            <h4>Binary Path</h4>
+                            <input type="text" value="${installation.binaryPath}" onchange="updateBlenderInstallation(${index}, 'binaryPath', this.value)" maxlength="256" style="width: 600px"/>
+                        </div>
+                        <div>
+                            <h4>Device</h4>
+                            <select onchange="updateBlenderInstallation(${index}, 'device', this.value)">
+                                <option value="0" ${installation.device === 0 ? "selected" : ""}>CPU</option>
+                                <option value="1" ${installation.device === 1 ? "selected" : ""}>GPU</option>
+                            </select>
+                        </div>
+                        <div ${index === 0 ? `style="visibility: collapse;"` : ``}>
+                            <button type="button" onclick="removeBlenderInstallation(${index});" class="button-red">Remove</button>
+                        </div>
+                    </div>
+                `;
+                
+                @* if (index !== 0) { *@
+                @*     let removeDiv = document.createElement("div"); *@
+                @*     removeDiv.innerHTML = ` *@
+                @*         <button type="button" onclick="removeBlenderInstallation(${index})" class="button-red">Remove</button> *@
+                @*     `; *@
+                @*     div.appendChild(removeDiv); *@
+                @* } *@
+                blenderInstallationsList.appendChild(div);
+                @* if (index !== blenderInstallations.length - 1) { *@
+                @*     let separator = document.createElement("hr"); *@
+                @*     separator.style.width = "100%"; *@
+                @*     blenderInstallationsList.appendChild(separator); *@
+                @* } *@
+            });    
+        }
+    </script>
+}

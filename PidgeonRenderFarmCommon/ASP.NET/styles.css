@@ -117,17 +117,21 @@ button, .button {
     text-decoration: none;
     font-weight: 600;
     box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+    font-size: 1rem;
+    height: 51px;
     cursor:  pointer;
     border: none;
     z-index: 1;
+    transform: translateY(0);
+    transition: 0.3s;
 }
 button::before, .button::before {
     content: "";
-    background: linear-gradient(#1553db, #2b72e6);
+    background: linear-gradient(#1553db, #478ef3);
     border-radius: 12px;
     opacity: 0;
     position: absolute;
-    transition: 0.5s;
+    transition: 0.5s opacity;
     width: 100%;
     height: 100%;
     top: 0;
@@ -137,7 +141,17 @@ button::before, .button::before {
     button:hover::before, .button:hover::before {
         opacity: 1;
     }
+    button:hover, .button:hover {
+        transform: translateY(5px);
+    }
 
+.button-red {
+    background: linear-gradient(#ef4444, #f87171);
+}
+.button-red::before {
+    background: linear-gradient(#dc2626, #dc8585);
+}
+    
 main {
     display: flex;
     flex-direction: column;
