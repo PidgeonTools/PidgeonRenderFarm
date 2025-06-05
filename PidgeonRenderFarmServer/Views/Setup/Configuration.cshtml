@@ -3,34 +3,36 @@
     <h2>Configuration</h2>
 </div>
 
+<div style="display: flex; gap: 64px;">
+    <div>
+        <h4>Log Level (Default: Warning)</h4>
+        <select id="config-log-level">
+        </select>
+    </div>
+</div>
+
+<div style="display: flex; gap: 64px;">
+    <div>
+        <h4>FFmpeg Path</h4>
+        <input type="text" maxlength="256" id="config-ffmpeg-path" style="width: 600px"/>
+    </div>
+</div>
+
+<details>
+    <summary>Advanced</summary>
+    
     <div style="display: flex; gap: 64px;">
         <div>
-            <h4>IP-Address</h4>
-            <input type="text" minlength="7" maxlength="15" size="15" id="config-ip"/>
+            <h4 title="If you are not sure what this means, leave this option with the default value. Use * to bind on all network addresses">Network Address for binding Application (Default: *)</h4>
+            <input type="text" minlength="7" maxlength="15" size="15" id="config-address"/>
         </div>
 
         <div>
-            <h4>Port</h4>
+            <h4 title="If you are not sure what this means, leave this option with the default value">Port (Default: 16186)</h4>
             <input type="number" min="1" max="65535" id="config-port"/>
         </div>
     </div>
-
-    <div style="display: flex; gap: 64px;">
-        <div>
-            <h4>Log Level</h4>
-            <select id="config-log-level">
-                <option value="1">Warn</option>
-            </select>
-        </div>
-    </div>
-
-    <div style="display: flex; gap: 64px;">
-        <div>
-            <h4>FFmpeg Path</h4>
-            <input type="text" maxlength="256" id="config-ffmpeg-path" style="width: 600px"/>
-        </div>
-    </div>
-
+</details>
 
 <div>
     <button type="button" id="config-save" onclick="saveConfiguration();">Save</button>
@@ -39,7 +41,7 @@
 @section scripts
 {
     <script type="text/javascript">
-        let ipInput = document.getElementById("config-ip");
+        let addressInput = document.getElementById("config-address");
         let portInput = document.getElementById("config-port");
 
         let logLevelInput = document.getElementById("config-log-level");
@@ -52,7 +54,7 @@
 
         function loadConfiguration() {
             $.get("/setup/api/configuration", function (configuration) {
-                ipInput.value = configuration.iPAddressString;
+                addressInput.value = configuration.bindingAddress;
                 portInput.value = configuration.port;
                 logLevelInput.value = configuration.logLevel;
                 ffmpegPathInput.value = configuration.fFmpegPath;
@@ -63,7 +65,7 @@
             $.post("/setup/api/configuration", {
                 receivedConfiguration: {
                     port: portInput.value,
-                    iPAddressString: ipInput.value,
+                    bindingAddress: addressInput.value,
                     logLevel: logLevelInput.value,
                     fFmpegPath: ffmpegPathInput.value
                 }

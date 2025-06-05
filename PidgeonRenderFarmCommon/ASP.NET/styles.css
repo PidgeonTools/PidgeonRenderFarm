@@ -9,7 +9,7 @@ html {
 body {
     margin: 0;
     padding: 0 16px;
-    background: linear-gradient(to right, #f0f4f8, #d9e2ec);
+    background: linear-gradient(to right bottom, #f0f4f8, #d9e2ec);
     color: #333;
 }
 
@@ -26,7 +26,7 @@ nav {
     margin: 0 -16px;
     padding: 16px 48px;
     align-items: center;
-    background: linear-gradient(to right, #1f2937, #374151);
+    background: linear-gradient(to right bottom, #1f2937, #374151);
     color: #fff;
 }
     nav a, nav a:visited {
@@ -105,12 +105,16 @@ select {
     background-size: 1rem;
     padding-right: 2.5rem;
     cursor: pointer;
+    user-select:  none;
 }
 
-
 button, .button {
+    height: 51px;
+}
+
+button, .button, summary {
     position: relative;
-    background: linear-gradient(#3b82f6, #60a5fa);
+    background: linear-gradient(to right bottom, #3b82f6, #60a5fa);
     color: #fff;
     padding: 0.75rem 1.5rem;
     border-radius: 12px;
@@ -118,16 +122,16 @@ button, .button {
     font-weight: 600;
     box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
     font-size: 1rem;
-    height: 51px;
     cursor:  pointer;
     border: none;
     z-index: 1;
     transform: translateY(0);
     transition: 0.3s;
+    user-select: none;
 }
-button::before, .button::before {
+button::before, .button::before, summary::before {
     content: "";
-    background: linear-gradient(#1553db, #478ef3);
+    background: linear-gradient(to right bottom, #1553db, #478ef3);
     border-radius: 12px;
     opacity: 0;
     position: absolute;
@@ -138,18 +142,19 @@ button::before, .button::before {
     left: 0;
     z-index: -1;
 }
-    button:hover::before, .button:hover::before {
+    button:hover::before, .button:hover::before, summary:hover::before {
         opacity: 1;
     }
-    button:hover, .button:hover {
+    button:hover, .button:hover, summary:hover {
         transform: translateY(5px);
     }
 
 .button-red {
-    background: linear-gradient(#ef4444, #f87171);
+    box-shadow: 0 4px 12px rgba(255, 50, 50, 0.4);
+    background: linear-gradient(to right bottom, #ef4444, #f87171);
 }
 .button-red::before {
-    background: linear-gradient(#dc2626, #dc8585);
+    background: linear-gradient(to right bottom, #dc2626, #dc8585);
 }
     
 main {
@@ -160,14 +165,72 @@ main {
     animation: fadeInUp 1s ease;
 }
 
-h4 {
-    margin-top: 0;
-    margin-bottom: 12px;
+h1 {
+    font-size: 7rem;
+    margin-bottom: 32px;
 }
 
 h2 {
     margin-bottom: 0;
 }
+
+h4 {
+    margin-top: 0;
+    margin-bottom: 12px;
+}
+
+details {
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+    margin-top: 32px;
+}
+
+summary {
+    user-select: none;
+    align-self: center;
+    list-style: none;
+    padding-right: 2.5rem;
+}
+    summary::after {
+        content: "";
+        position: absolute;
+        right: 1rem;
+        width: 1rem;
+        height: 1rem;
+        background-image: url("data:image/svg+xml,%3Csvg fill='none' stroke='%23ffffff' stroke-width='2' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: center;
+        background-size: 1rem;
+        pointer-events: none;
+    }
+
+details[open] summary::after {
+    background-image: url("data:image/svg+xml,%3Csvg fill='none' stroke='%23ffffff' stroke-width='2' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M5 15l7-7 7 7'%3E%3C/path%3E%3C/svg%3E");
+}
+
+h1 {
+    place-self: center;
+    font-family: "Serif", serif;
+    background: linear-gradient(
+            90deg,
+            #ff0000,
+            #ff9900,
+            #ffff00,
+            #33cc33,
+            #00ccff,
+            #6600cc,
+            #ff00cc,
+            #ff0000
+    ) -100% / 200%;
+
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: shimmer 10s linear infinite
+}
+
+@keyframes shimmer { to { background-position: 100% } }
 
 @keyframes fadeInUp {
     from {

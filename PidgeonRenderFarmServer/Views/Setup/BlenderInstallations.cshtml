@@ -11,7 +11,7 @@
 </div>
 
 <div>
-    <button type="button" id="config-save" onclick="saveConfiguration();">Save</button>
+    <button type="button" id="config-save" onclick="saveBlenderInstallations();">Save</button>
 </div>
 
 @section scripts
@@ -62,44 +62,50 @@
         }
 
         const blenderInstallationsList = document.getElementById("blender-installations-list");
+
         function updateBlenderInstallationsDisplay() {
             blenderInstallationsList.innerHTML = "";
 
-            blenderInstallations.forEach((installation, index) => {
-                let div = document.createElement("div");
-                div.innerHTML = `
-                    <h3>Blender Installation #${index + 1}</h3>
-                    <div style="display: flex; gap: 64px; align-items: end;">
-                        <div>
-                            <h4>Binary Path</h4>
-                            <input type="text" value="${installation.binaryPath}" onchange="updateBlenderInstallation(${index}, 'binaryPath', this.value)" maxlength="256" style="width: 600px"/>
+            $.get("/api/blender-devices", function (blenderDevices) {
+                blenderInstallations.forEach((installation, index) => {
+                    let div = document.createElement("div");
+                    let blenderDeviceOptions = Object.entries(blenderDevices)
+                        .map(([key, value]) => `<option value="${value}" ${installation.device === value ? "selected" : ""}>${key}</option>`)
+                        .join('');
+                    
+                    div.innerHTML = `
+                        <h3>Blender Installation #${index + 1}</h3>
+                        <div style="display: flex; gap: 64px; align-items: end;">
+                            <div>
+                                <h4>Binary Path</h4>
+                                <input type="text" value="${installation.binaryPath}" onchange="updateBlenderInstallation(${index}, 'binaryPath', this.value)" maxlength="256" style="width: 600px"/>
+                            </div>
+                            <div>
+                                <h4>Device</h4>
+                                <select onchange="updateBlenderInstallation(${index}, 'device', this.value)">
+                                    ${blenderDeviceOptions}
+                                </select>
+                            </div>
+                            <div ${index === 0 ? `style="visibility: collapse;"` : ``}>
+                                <button type="button" onclick="removeBlenderInstallation(${index});" class="button-red">Remove</button>
+                            </div>
                         </div>
-                        <div>
-                            <h4>Device</h4>
-                            <select onchange="updateBlenderInstallation(${index}, 'device', this.value)">
-                                <option value="0" ${installation.device === 0 ? "selected" : ""}>CPU</option>
-                                <option value="1" ${installation.device === 1 ? "selected" : ""}>GPU</option>
-                            </select>
-                        </div>
-                        <div ${index === 0 ? `style="visibility: collapse;"` : ``}>
-                            <button type="button" onclick="removeBlenderInstallation(${index});" class="button-red">Remove</button>
-                        </div>
-                    </div>
-                `;
-                
-                @* if (index !== 0) { *@
-                @*     let removeDiv = document.createElement("div"); *@
-                @*     removeDiv.innerHTML = ` *@
-                @*         <button type="button" onclick="removeBlenderInstallation(${index})" class="button-red">Remove</button> *@
-                @*     `; *@
-                @*     div.appendChild(removeDiv); *@
-                @* } *@
-                blenderInstallationsList.appendChild(div);
-                @* if (index !== blenderInstallations.length - 1) { *@
-                @*     let separator = document.createElement("hr"); *@
-                @*     separator.style.width = "100%"; *@
-                @*     blenderInstallationsList.appendChild(separator); *@
-                @* } *@
+                    `;
+                    
+                    @* if (index !== 0) { *@
+                    @*     let removeDiv = document.createElement("div"); *@
+                    @*     removeDiv.innerHTML = ` *@
+                    @*         <button type="button" onclick="removeBlenderInstallation(${index})" class="button-red">Remove</button> *@
+                    @*     `; *@
+                    @*     div.appendChild(removeDiv); *@
+                    @* } *@
+                    blenderInstallationsList.appendChild(div);
+                    @* if (index !== blenderInstallations.length - 1) { *@
+                    @*     let separator = document.createElement("hr"); *@
+                    @*     separator.style.width = "100%"; *@
+                    @*     blenderInstallationsList.appendChild(separator); *@
+                    @* } *@
+                });
             });    
         }
     </script>

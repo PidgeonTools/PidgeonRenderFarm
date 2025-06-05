@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 using PidgeonRenderFarm.Common;
+using PidgeonRenderFarm.Common.Database.Models;
 using PidgeonRenderFarm.Server;
 using PidgeonRenderFarm.Server.Models;
 
@@ -44,8 +45,8 @@ public class SetupController : Controller
     }
     [HttpPost]
     [Route("api/blender-installations")]
-    public async Task<bool> SetCurrentBlenderInstallations()
+    public async Task<JsonResult> SetCurrentBlenderInstallations(BlenderInstallation[] receivedBlenderInstallations)
     {
-        return true;
+        return Json(true);
     }
 }

@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using PidgeonRenderFarm.Common.Enums;
 using PidgeonRenderFarm.Common.Models;
 using PidgeonRenderFarm.Server;
 
@@ -16,6 +17,16 @@ public class APIController : Controller
             .Cast<LogLevel>()
             .ToDictionary(key => key.ToString(), value => (int)value);
         return Json(logLevels);
+    }
+    
+    [HttpGet]
+    [Route("blender-devices")]
+    public async Task<JsonResult> GetBlenderDevices()
+    {
+        Dictionary<string, int> blenderDevices = Enum.GetValues(typeof(BlenderDevice))
+            .Cast<BlenderDevice>()
+            .ToDictionary(key => key.ToString(), value => (int)value);
+        return Json(blenderDevices);
     }
     
     [HttpGet]

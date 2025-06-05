@@ -24,7 +24,7 @@ do
         app.UseHsts();
     
         app.Urls.Clear();
-        app.Urls.Add($"https://{ServerKernel.ActiveConfiguration!.GetIPAddress()}:{ServerKernel.ActiveConfiguration!.Port}");
+        app.Urls.Add($"https://{ServerKernel.ActiveConfiguration!.GetBindingAddress()}:{ServerKernel.ActiveConfiguration!.Port}");
     }
 
     app.UseHttpsRedirection();

@@ -17,29 +17,31 @@ public abstract class Configuration<TConfiguration> : BaseEntity
 
     [JsonProperty(nameof(IPAddress))]
     [XmlElement(IsNullable = true)]
-    public string? IPAddressString { get; set; }
+    public string? BindingAddress { get; set; } = "*";
 
-    private IPAddress? ipAddress;
-    public IPAddress? GetIPAddress()
+    public string GetBindingAddress()
     {
-        if (string.IsNullOrEmpty(IPAddressString))
+        if (BindingAddress?.Equals("*") == true)
         {
-            SetIPAddress(null);
+            return BindingAddress;
         }
-        else
+        else if (!string.IsNullOrWhiteSpace(BindingAddress))
         {
-            SetIPAddress(IPAddress.Parse(IPAddressString));
+            try
+            {
+                IPAddress[] ips = Dns.GetHostAddresses(BindingAddress);
+                if (ips.Length > 0)
+                {
+                    return ips[0].ToString();
+                }
+            }
+            catch (Exception ex)
+            {
+                
+            }
         }
 
-        return ipAddress;
-    }
-    public void SetIPAddress(IPAddress? value)
-    {
-        if (!Equals(ipAddress, value))
-        {
-            ipAddress = value;
-            IPAddressString = value?.ToString();
-        }
+        return "127.0.0.1";
     }
     
     public ushort Port { get; set; } = 16186;
