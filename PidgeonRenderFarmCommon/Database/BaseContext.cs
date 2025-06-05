@@ -62,7 +62,7 @@ public abstract class BaseContext<TContext, TConfiguration>(DbContextOptions dbC
     
     public virtual DbSet<VersionInfo> BlenderVersions { get; set; }
     public virtual DbSet<VersionInfo> PTBVersions { get; set; }
-    // public virtual DbSet<RenderEngine> RenderEngines { get; set; }
+    public virtual DbSet<RenderEngine> RenderEngines { get; set; }
     public virtual DbSet<BlenderInstallation> BlenderInstallations { get; set; }
     
     protected override void OnModelCreating(ModelBuilder modelBuilder)
